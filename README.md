@@ -3,4 +3,4 @@ cargo test --package halo2-experiments --lib -- sql::q6_final_v1::tests::test_1 
 
 cargo test --package halo2-experiments --lib -- sql::q1_final_v1::tests::test_1 --exact --nocapture
 
-# halo2-TPCH
+
