@@ -11,7 +11,7 @@ use halo2_proofs::{circuit::*, plonk::*, poly::Rotation};
 
 use std::mem;
 
-const N: usize = 10;
+const N: usize = 60000;
 
 // #[derive(Default)]
 // We should use the selector to skip the row which does not satisfy shipdate values
@@ -46,10 +46,11 @@ pub struct TestCircuitConfig<F: Field> {
     check_sort: Column<Advice>,
     equal_or_not: Column<Advice>,
     // pub instance: Column<Instance>,
-    lt_right_shipdate: LtConfig<F, 3>,
+
     // lt_returnflag_sort: LtEqConfig<F, 3>,
-    lt_returnflag_linestatus: LtEqV1Config<F, 3>,
-    a_equals_b: IsZeroV2Config<F>,
+    lt_right_shipdate: LtConfig<F, 3>,
+    // lt_returnflag_linestatus: LtEqV1Config<F, 3>,
+    // a_equals_b: IsZeroV2Config<F>,
 }
 
 #[derive(Debug, Clone)]
@@ -123,31 +124,31 @@ impl<F: Field> TestChip<F> {
             |meta| meta.query_advice(right_shipdate, Rotation::cur()), // we put the left and right value at the first two positions of value_l
         );
 
-        // let lt_returnflag_sort = LtEqChip::configure(
+        // // let lt_returnflag_sort = LtEqChip::configure(
+        // //     meta,
+        // //     |meta| meta.query_selector(q_sort),
+        // //     |meta| meta.query_advice(perm_l_returnflag, Rotation::prev()),
+        // //     |meta| meta.query_advice(perm_l_returnflag, Rotation::cur()),
+        // // );
+
+        // let lt_returnflag_linestatus = LtEqV1Chip::configure(
         //     meta,
         //     |meta| meta.query_selector(q_sort),
         //     |meta| meta.query_advice(perm_l_returnflag, Rotation::prev()),
+        //     |meta| meta.query_advice(perm_l_linestatus, Rotation::prev()),
         //     |meta| meta.query_advice(perm_l_returnflag, Rotation::cur()),
+        //     |meta| meta.query_advice(perm_l_linestatus, Rotation::cur()),
         // );
 
-        let lt_returnflag_linestatus = LtEqV1Chip::configure(
-            meta,
-            |meta| meta.query_selector(q_sort),
-            |meta| meta.query_advice(perm_l_returnflag, Rotation::prev()),
-            |meta| meta.query_advice(perm_l_linestatus, Rotation::prev()),
-            |meta| meta.query_advice(perm_l_returnflag, Rotation::cur()),
-            |meta| meta.query_advice(perm_l_linestatus, Rotation::cur()),
-        );
-
-        let a_equals_b = IsZeroV2Chip::configure(
-            meta,
-            |meta| meta.query_selector(q_equal), // this is the q_enable
-            |meta| {
-                meta.query_advice(perm_l_returnflag, Rotation::cur())
-                    - meta.query_advice(perm_l_returnflag, Rotation::prev())
-            }, // this is the value
-            is_zero_advice_column,               // this is the advice column that stores value_inv
-        );
+        // let a_equals_b = IsZeroV2Chip::configure(
+        //     meta,
+        //     |meta| meta.query_selector(q_equal), // this is the q_enable
+        //     |meta| {
+        //         meta.query_advice(perm_l_returnflag, Rotation::cur())
+        //             - meta.query_advice(perm_l_returnflag, Rotation::prev())
+        //     }, // this is the value
+        //     is_zero_advice_column,               // this is the advice column that stores value_inv
+        // );
 
         meta.create_gate(
             "verifies that `check` current confif = is_lt from LtChip ",
@@ -161,15 +162,15 @@ impl<F: Field> TestChip<F> {
             },
         );
 
-        // check the values in the two columns are sorted (i.e. tuple sorted)
-        meta.create_gate("verifies that t[i-1] <= t[i]", |meta| {
-            let q_sort = meta.query_selector(q_sort);
+        // // check the values in the two columns are sorted (i.e. tuple sorted)
+        // meta.create_gate("verifies that t[i-1] <= t[i]", |meta| {
+        //     let q_sort = meta.query_selector(q_sort);
 
-            // This verifies lt(value_l::cur, value_r::cur) is calculated correctly
-            let check_sort = meta.query_advice(check_sort, Rotation::cur());
+        //     // This verifies lt(value_l::cur, value_r::cur) is calculated correctly
+        //     let check_sort = meta.query_advice(check_sort, Rotation::cur());
 
-            vec![q_sort * (lt_returnflag_linestatus.is_lt(meta, None) - check_sort)]
-        });
+        //     vec![q_sort * (lt_returnflag_linestatus.is_lt(meta, None) - check_sort)]
+        // });
 
         // sum gate
         meta.create_gate("accumulate constraint", |meta| {
@@ -206,18 +207,18 @@ impl<F: Field> TestChip<F> {
             ]
         });
 
-        meta.create_gate("f(a, b) = if a == b {1} else {0}", |meta| {
-            let s = meta.query_selector(q_equal);
-            // a  |  b  | s      |a == b | output  |  s * (a == b) * (output - 1) | s * (1 - a == b) * (output - 0)
-            // --------------------------------
-            // 10 | 12  | 1      | 0     |  0      | 1 * 0 * -1                   | 1 * 1 * 0 = 0
-            // 10 | 10  | 1      | 1     |  1      | 1 * 1 * 0 (output == 1)      | 1 * 0 * 1 = 0
-            let output = meta.query_advice(equal_or_not, Rotation::cur());
-            vec![
-                s.clone() * (a_equals_b.expr() * (output.clone() - Expression::Constant(F::ONE))), // in this case output == 1
-                s * (Expression::Constant(F::ONE) - a_equals_b.expr()) * (output), // in this case output == 0
-            ]
-        });
+        // meta.create_gate("f(a, b) = if a == b {1} else {0}", |meta| {
+        //     let s = meta.query_selector(q_equal);
+        //     // a  |  b  | s      |a == b | output  |  s * (a == b) * (output - 1) | s * (1 - a == b) * (output - 0)
+        //     // --------------------------------
+        //     // 10 | 12  | 1      | 0     |  0      | 1 * 0 * -1                   | 1 * 1 * 0 = 0
+        //     // 10 | 10  | 1      | 1     |  1      | 1 * 1 * 0 (output == 1)      | 1 * 0 * 1 = 0
+        //     let output = meta.query_advice(equal_or_not, Rotation::cur());
+        //     vec![
+        //         s.clone() * (a_equals_b.expr() * (output.clone() - Expression::Constant(F::ONE))), // in this case output == 1
+        //         s * (Expression::Constant(F::ONE) - a_equals_b.expr()) * (output), // in this case output == 0
+        //     ]
+        // });
         // let num = meta.num_advice_columns();
         // println!("Number of columns: {}", num);
 
@@ -235,10 +236,11 @@ impl<F: Field> TestChip<F> {
             check_sort,
             sum_qty,
             l_returnflag,
+
             lt_right_shipdate,
-            lt_returnflag_linestatus,
+            // lt_returnflag_linestatus,
+            // a_equals_b,
             perm_l_returnflag,
-            a_equals_b,
             equal_or_not,
             q_equal,
             l_extendedprice,
@@ -264,14 +266,14 @@ impl<F: Field> TestChip<F> {
         right_shipdate: u64,
         check: [bool; N],
         check_sort: [bool; N],
-    ) -> Result<Vec<AssignedCell<F, F>>, Error> {
+    ) -> Result<(), Error> {
         // Result<AssignedCell<F, F>, Error> {
         let chip1 = LtChip::construct(self.config.lt_right_shipdate);
-        let chip2 = LtEqV1Chip::construct(self.config.lt_returnflag_linestatus);
-        let is_zero_chip = IsZeroV2Chip::construct(self.config.a_equals_b.clone());
+        // let chip2 = LtEqV1Chip::construct(self.config.lt_returnflag_linestatus);
+        // let is_zero_chip = IsZeroV2Chip::construct(self.config.a_equals_b.clone());
 
         chip1.load(layouter)?;
-        chip2.load(layouter)?;
+        // chip2.load(layouter)?;
 
         let mut equal_or_not_values: Vec<AssignedCell<F, F>> = Vec::with_capacity(N);
 
@@ -334,15 +336,15 @@ impl<F: Field> TestChip<F> {
                     for k in 0..N {
                         perm_returnflag_linestatus[k] = (l_returnflag[k], l_linestatus[k]);
                     }
-                    perm_returnflag_linestatus.sort_by(
-                        |&(a_returnflag, a_linestatus), &(b_returnflag, b_linestatus)| {
-                            let sum_a = a_returnflag + a_linestatus;
-                            let sum_b = b_returnflag + b_linestatus;
+                    // perm_returnflag_linestatus.sort_by(
+                    //     |&(a_returnflag, a_linestatus), &(b_returnflag, b_linestatus)| {
+                    //         let sum_a = a_returnflag + a_linestatus;
+                    //         let sum_b = b_returnflag + b_linestatus;
 
-                            // Compare by the sum
-                            sum_a.cmp(&sum_b)
-                        },
-                    );
+                    //         // Compare by the sum
+                    //         sum_a.cmp(&sum_b)
+                    //     },
+                    // );
 
                     // let mut perm_returnflag: [u64; N] = l_returnflag;
                     // perm_returnflag.sort();
@@ -399,40 +401,27 @@ impl<F: Field> TestChip<F> {
                     if i != 0 {
                         self.config.q_sort.enable(&mut region, i)?;
                         self.config.q_equal.enable(&mut region, i)?;
-                        chip2.assign(
-                            &mut region,
-                            i,
-                            F::from(perm_returnflag_linestatus[i - 1].0),
-                            F::from(perm_returnflag_linestatus[i - 1].1),
-                            F::from(perm_returnflag_linestatus[i].0),
-                            F::from(perm_returnflag_linestatus[i].1),
-                        )?;
-                        // assign the values to the equal_or_not column
-                        // let a_cell = region.assign_advice(
-                        //     || "a",
-                        //     self.config.perm_l_returnflag,
-                        //     i - 1,
-                        //     || Value::known(F::from(perm_returnflag[i - 1])),
-                        // )?;
-                        // let b_cell = region.assign_advice(
-                        //     || "b",
-                        //     self.config.perm_l_returnflag,
+                        // chip2.assign(
+                        //     &mut region,
                         //     i,
-                        //     || Value::known(F::from(perm_returnflag[i])),
+                        //     F::from(perm_returnflag_linestatus[i - 1].0),
+                        //     F::from(perm_returnflag_linestatus[i - 1].1),
+                        //     F::from(perm_returnflag_linestatus[i].0),
+                        //     F::from(perm_returnflag_linestatus[i].1),
                         // )?;
 
-                        is_zero_chip.assign(
-                            &mut region,
-                            i,
-                            // TO DO: make perm_returnflag_linestatus[i].0 - perm_returnflag_linestatus[i-1].0
-                            // and perm_returnflag_linestatus[i].1 - perm_returnflag_linestatus[i-1].1 hold at the same time
-                            Value::known(F::from(
-                                perm_returnflag_linestatus[i].0
-                                    - perm_returnflag_linestatus[i - 1].0
-                                    + perm_returnflag_linestatus[i].1
-                                    - perm_returnflag_linestatus[i - 1].1,
-                            )),
-                        )?;
+                        // is_zero_chip.assign(
+                        //     &mut region,
+                        //     i,
+                        //     // TO DO: make perm_returnflag_linestatus[i].0 - perm_returnflag_linestatus[i-1].0
+                        //     // and perm_returnflag_linestatus[i].1 - perm_returnflag_linestatus[i-1].1 hold at the same time
+                        //     Value::known(F::from(
+                        //         perm_returnflag_linestatus[i].0
+                        //             - perm_returnflag_linestatus[i - 1].0
+                        //             + perm_returnflag_linestatus[i].1
+                        //             - perm_returnflag_linestatus[i - 1].1,
+                        //     )),
+                        // )?;
 
                         let output = if ((perm_returnflag_linestatus[i].0
                             == perm_returnflag_linestatus[i - 1].0)
@@ -556,8 +545,8 @@ impl<F: Field> TestChip<F> {
                     prev_sum_disc = sum_disc_cell;
                     prev_sum_charge = sum_charge_cell;
                 }
-                // Ok(prev_b)
-                Ok(mem::replace(&mut equal_or_not_values, Vec::new()))
+                Ok(())
+                // Ok(mem::replace(&mut equal_or_not_values, Vec::new()))
             },
         )
     }
@@ -651,9 +640,9 @@ impl<F: Field> Circuit<F> for MyCircuit<F> {
 
 #[cfg(test)]
 mod tests {
-
     use super::MyCircuit;
     use super::N;
+    // use rand::Rng;
     // use halo2_proofs::poly::commitment::Params
     use halo2_proofs::{dev::MockProver, halo2curves::bn256::Fr as Fp};
 
@@ -661,7 +650,8 @@ mod tests {
 
     #[test]
     fn test_1() {
-        let k = 12;
+        let k = 18;
+        // let mut rng = rand::thread_rng();
 
         let mut l_quantity: [u64; N] = [1; N];
         let mut l_extendedprice: [u64; N] = [1; N];
@@ -674,6 +664,11 @@ mod tests {
         let mut right_shipdate: u64 = 100000;
         let mut check: [bool; N] = [true; N];
         let mut check_sort: [bool; N] = [true; N];
+        // for i in 0..N {
+        //     l_returnflag[i] = rng.gen_range(1..=100000) as u64;
+        //     l_linestatus[i] = rng.gen_range(1..=100000) as u64;
+        // }
+
         // check[0] = false;
 
         // let mut l_discount: Vec<u64> = Vec::new();
