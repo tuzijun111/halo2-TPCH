@@ -16,6 +16,7 @@ pub mod merkle_v2;
 pub mod merkle_v3;
 pub mod overflow_check;
 pub mod overflow_check_v2;
+pub mod permutation_any;
 pub mod poseidon;
 pub mod safe_accumulator;
 pub mod util;
