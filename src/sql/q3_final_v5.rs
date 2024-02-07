@@ -239,25 +239,25 @@ impl<F: Field + Ord> TestChip<F> {
 
         // // c_mktsegment = ':1'
         let mut equal_condition = Vec::new();
-        let config = IsZeroChip::configure(
-            meta,
-            |meta| meta.query_selector(q_enable[0]), // this is the q_enable
-            |meta| {
-                meta.query_advice(customer[0], Rotation::cur())
-                    - meta.query_advice(condition[0], Rotation::cur())
-            }, // this is the value
-            is_zero_advice_column[0], // this is the advice column that stores value_inv
-        );
-        equal_condition.push(config.clone());
+        // let config = IsZeroChip::configure(
+        //     meta,
+        //     |meta| meta.query_selector(q_enable[0]), // this is the q_enable
+        //     |meta| {
+        //         meta.query_advice(customer[0], Rotation::cur())
+        //             - meta.query_advice(condition[0], Rotation::cur())
+        //     }, // this is the value
+        //     is_zero_advice_column[0], // this is the advice column that stores value_inv
+        // );
+        // equal_condition.push(config.clone());
 
-        meta.create_gate("f(a, b) = if a == b {1} else {0}", |meta| {
-            let s = meta.query_selector(q_enable[0]);
-            let output = meta.query_advice(check[0], Rotation::cur());
-            vec![
-                s.clone() * (config.expr() * (output.clone() - Expression::Constant(F::ONE))), // in this case output == 1
-                s * (Expression::Constant(F::ONE) - config.expr()) * (output), // in this case output == 0
-            ]
-        });
+        // meta.create_gate("f(a, b) = if a == b {1} else {0}", |meta| {
+        //     let s = meta.query_selector(q_enable[0]);
+        //     let output = meta.query_advice(check[0], Rotation::cur());
+        //     vec![
+        //         s.clone() * (config.expr() * (output.clone() - Expression::Constant(F::ONE))), // in this case output == 1
+        //         s * (Expression::Constant(F::ONE) - config.expr()) * (output), // in this case output == 0
+        //     ]
+        // });
 
         let mut lt_compare_condition = Vec::new();
         // // o_orderdate < date ':2'
@@ -672,11 +672,11 @@ impl<F: Field + Ord> TestChip<F> {
                         || Value::known(condition[0]),
                     )?;
 
-                    equal_chip[0].assign(
-                        &mut region,
-                        i,
-                        Value::known(customer[i][0] - condition[0]),
-                    )?; // c_mktsegment = ':1'
+                    // equal_chip[0].assign(
+                    //     &mut region,
+                    //     i,
+                    //     Value::known(customer[i][0] - condition[0]),
+                    // )?; // c_mktsegment = ':1'
                 }
                 for i in 0..orders.len() {
                     self.config.q_enable[1].enable(&mut region, i)?;

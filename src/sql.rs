@@ -9,6 +9,7 @@ pub mod q3_final_v2;
 pub mod q3_final_v3;
 pub mod q3_final_v4;
 pub mod q3_final_v5;
+pub mod q3_final_v6;
 
 pub mod q5_final_v1;
 pub mod q5_final_v2;
