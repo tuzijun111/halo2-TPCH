@@ -1,154 +1,288 @@
-// use rand::Rng;
-// use std::iter;
+use crate::chips::less_than::{LtChip, LtConfig, LtInstruction};
+use crate::is_zero::{IsZeroChip, IsZeroConfig};
+// use eth_types::Field;
+use halo2_proofs::halo2curves::ff::PrimeField;
+use halo2_proofs::{
+    // arithmetic::Field,
+    circuit::{AssignedCell, Layouter, SimpleFloorPlanner, Value},
+    plonk::{Advice, Circuit, Column, ConstraintSystem, Error, Expression, Instance, Selector},
+    poly::Rotation,
+};
 
-// // Define a custom type for u64 to implement required traits
-// #[derive(Debug, Clone, Copy, PartialEq)]
-// struct U64Type(u64);
+const NUM_BYTES: usize = 5;
 
-// impl U64Type {
-//     fn one() -> Self {
-//         U64Type(1)
-//     }
+pub trait Field: PrimeField<Repr = [u8; 32]> {}
 
-//     fn random(rng: &mut impl Rng) -> Self {
-//         U64Type(rng.gen())
-//     }
+impl<F> Field for F where F: PrimeField<Repr = [u8; 32]> {}
 
-//     fn mul(self, rhs: Self) -> Self {
-//         U64Type(self.0.wrapping_mul(rhs.0))
-//     }
-// }
+#[derive(Debug, Clone)]
+// We add the is_zero_config to the FunctionConfig as this is the gadget that we'll be using
+// The is_zero_config is the configuration for the IsZeroChip and is composed of an advice column and an expression
+struct FunctionConfig<F: Field + Ord> {
+    selector: Selector,
+    a: Column<Advice>,
+    b: Column<Advice>,
+    a_equals_b: IsZeroConfig<F>,
+    output: Column<Advice>,
+    instance: Column<Instance>,
+    lt: LtConfig<F, NUM_BYTES>,
+    check: Column<Advice>,
+}
 
-// // Implement the Mul and Add traits for U64Type
-// use std::ops::{Add, Mul, MulAssign};
+#[derive(Debug, Clone)]
+struct FunctionChip<F: Field + Ord> {
+    config: FunctionConfig<F>,
+}
 
-// impl Mul for U64Type {
-//     type Output = Self;
+impl<F: Field + Ord> FunctionChip<F> {
+    pub fn construct(config: FunctionConfig<F>) -> Self {
+        Self { config }
+    }
 
-//     fn mul(self, rhs: Self) -> Self {
-//         U64Type(self.0.wrapping_mul(rhs.0))
-//     }
-// }
+    // Chip configuration. This is where we define the gates
+    pub fn configure(meta: &mut ConstraintSystem<F>) -> FunctionConfig<F> {
+        let selector = meta.selector();
+        let a = meta.advice_column();
+        let b = meta.advice_column();
+        let output = meta.advice_column();
+        let is_zero_advice_column = meta.advice_column();
+        let instance = meta.instance_column();
+        let check = meta.advice_column();
 
-// impl Add for U64Type {
-//     type Output = Self;
+        meta.enable_equality(instance);
+        meta.enable_equality(a);
+        meta.enable_equality(b);
+        meta.enable_equality(output);
+        meta.enable_equality(check);
 
-//     fn add(self, rhs: Self) -> Self {
-//         U64Type(self.0.wrapping_add(rhs.0))
-//     }
-// }
+        // We set the configuration for our gadget chip here!
+        let a_equals_b = IsZeroChip::configure(
+            meta,
+            |meta| meta.query_selector(selector), // this is the q_enable
+            |meta| meta.query_advice(a, Rotation::cur()) - meta.query_advice(b, Rotation::cur()), // this is the value
+            is_zero_advice_column, // this is the advice column that stores value_inv
+        );
 
-// impl MulAssign<U64Type> for U64Type {
-//     fn mul_assign(&mut self, other: U64Type) {
-//         self.0 *= other.0;
-//     }
-// }
+        // We now need to set up our custom gate!
+        meta.create_gate("f(a, b) = if a == b {1} else {0}", |meta| {
+            let s = meta.query_selector(selector);
+            let a = meta.query_advice(a, Rotation::cur());
+            let b = meta.query_advice(b, Rotation::cur());
 
-// #[cfg(test)]
-// mod tests {
-//     use super::U64Type;
-//     use rand::Rng;
-//     use std::iter;
+            // a  |  b  | s      |a == b | output  |  s * (a == b) * (output - 1) | s * (1 - a == b) * (output - 0)
+            // --------------------------------
+            // 10 | 10  | 1      | 1     | 1       | 1 * 1 * 0                    | 1 * 0 * 1 = 0
+            // 10 | 12  | 1      | 0     | 0       | 1 * 0 * (-1)                 | 1 * 1 * 0 = 0
+            let output = meta.query_advice(output, Rotation::cur());
 
-//     #[test]
-//     fn test1() {
-//         let blinding_factors = 5; // Modify this according to your needs
-//         let params_n = 15; // Modify this according to your needs
+            vec![
+                s.clone() * (a_equals_b.expr() * (output.clone() - (a.clone() - b.clone()))), // in this case output == c
+                s * (Expression::Constant(F::ONE) - a_equals_b.expr()) * (output - (a + b)), // in this case output == a - b
+            ]
+            // vec![
+            //     s.clone() * (a_equals_b.expr() * (output.clone() - Expression::Constant(F::one()))), // in this case output == c
+            //     s * (Expression::Constant(F::one()) - a_equals_b.expr()) * (output - Expression::Constant(F::zero())), // in this case output == a - b
+            // ]
+        });
 
-//         let mut rng = rand::thread_rng();
+        // lt test
+        let lt = LtChip::configure(
+            meta,
+            |meta| meta.query_selector(selector),
+            |meta| meta.query_advice(a, Rotation::cur()),
+            |meta| meta.query_advice(b, Rotation::cur()), // we put the left and right value at the first two positions of value_l
+        );
+        meta.create_gate(
+            "verifies o_orderdate < date ':2'", // just use less_than for testing here
+            |meta| {
+                let q_enable = meta.query_selector(selector);
+                let check = meta.query_advice(check, Rotation::cur());
+                vec![q_enable * (lt.is_lt(meta, None) - check)]
+            },
+        );
 
-//         let lookup_product: Vec<U64Type> = (0..params_n).map(|_| U64Type(rng.gen())).collect();
+        FunctionConfig {
+            selector,
+            a,
+            b,
+            a_equals_b,
+            output,
+            instance,
+            lt,
+            check,
+        }
+    }
 
-//         let z: Vec<U64Type> = iter::once(U64Type::one())
-//             .chain(lookup_product.iter().cloned())
-//             .scan(U64Type::one(), |state, cur| {
-//                 *state = state.mul(cur);
-//                 Some(*state)
-//             })
-//             .take(params_n - blinding_factors)
-//             .chain((0..blinding_factors).map(|_| U64Type::random(&mut rng.clone())))
-//             .collect();
+    // execute assignment on a, b, c, output column + is_zero advice column
+    pub fn assign(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        a: F,
+        b: F,
+    ) -> Result<AssignedCell<F, F>, Error> {
+        let is_zero_chip = IsZeroChip::construct(self.config.a_equals_b.clone());
+        let chip = LtChip::construct(self.config.lt.clone());
+        chip.load(layouter)?;
 
-//         println!("{:?}", z);
-//         assert_eq!(z.len(), params_n);
+        layouter.assign_region(
+            || "f(a, b) = if a == b {1} else {0}",
+            |mut region| {
+                // let a1 = a;
+                // let b1 = b;
+                self.config.selector.enable(&mut region, 0)?;
+                region.assign_advice(|| "a", self.config.a, 0, || Value::known(a))?;
+                region.assign_advice(|| "b", self.config.b, 0, || Value::known(b))?;
+                // a.copy_advice(|| "lhs", &mut region, config.advice[0], 0)?;
 
-//         fn compress_expressions(expressions: &[U64Type], theta: U64Type) -> U64Type {
-//             expressions
-//                 .iter()
-//                 .cloned()
-//                 .fold(U64Type::one(), |acc, expression| acc * theta + expression)
-//         }
+                // remember that the is_zero assign will assign the inverse of the value provided to the advice column
+                is_zero_chip.assign(&mut region, 0, Value::known(a - b))?;
+                // let output = if a1 == b1 {F::from(1) } else { F::from(0)};
+                let output = if a == b { a - b } else { a + b };
+                // region.assign_advice(|| "output", self.config.output, 0, || Value::known(output))
 
-//         let theta = U64Type(2);
+                region.assign_advice(
+                    || "check",
+                    self.config.check,
+                    0,
+                    || Value::known(F::from(1)),
+                )?;
 
-//         let permuted_input_expression = [
-//             U64Type(1),
-//             U64Type(2),
-//             U64Type(3),
-//             U64Type(4),
-//             U64Type(5),
-//             U64Type(6),
-//             U64Type(7),
-//             U64Type(8),
-//             U64Type(9),
-//             U64Type(10),
-//         ];
-//         let permuted_table_expression = [
-//             U64Type(10),
-//             U64Type(9),
-//             U64Type(8),
-//             U64Type(7),
-//             U64Type(6),
-//             U64Type(5),
-//             U64Type(4),
-//             U64Type(3),
-//             U64Type(2),
-//             U64Type(1),
-//         ];
+                chip.assign(&mut region, 0, Value::known(a), Value::known(b))?;
 
-//         let compressed_input_expression = compress_expressions(&permuted_input_expression, theta);
-//         let compressed_table_expression = compress_expressions(&permuted_table_expression, theta);
-//         let beta = U64Type(1);
-//         let gamma = U64Type(1);
-//         let u = 10;
+                let out_cell = region.assign_advice(
+                    || "output",
+                    self.config.output,
+                    0,
+                    || Value::known(output),
+                );
+                out_cell
+                // Ok(())
+            },
+        )
+    }
 
-//         for i in 0..u {
-//             let mut left = z[i + 1];
-//             let permuted_input_value = permuted_input_expression[i];
+    pub fn expose_public(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        cell: AssignedCell<F, F>,
+        row: usize,
+    ) -> Result<(), Error> {
+        layouter.constrain_instance(cell.cell(), self.config.instance, row)
+    }
+}
 
-//             let permuted_table_value = permuted_table_expression[i];
+#[derive(Default)]
+struct FunctionCircuit<F> {
+    a: F,
+    b: F,
+}
 
-//             left *= beta + permuted_input_value;
-//             left *= gamma + permuted_table_value;
+impl<F: Field + Ord> Circuit<F> for FunctionCircuit<F> {
+    type Config = FunctionConfig<F>;
+    type FloorPlanner = SimpleFloorPlanner;
 
-//             let mut right = z[i];
-//             let input_term = compressed_input_expression[i];
-//             let table_term = compressed_table_expression[i];
+    fn without_witnesses(&self) -> Self {
+        Self::default()
+    }
 
-//             let input_term_with_beta = input_term + beta;
-//             let table_term_with_gamma = table_term + gamma;
+    fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
+        FunctionChip::configure(meta)
+    }
 
-//             right *= input_term_with_beta * table_term_with_gamma;
+    fn synthesize(
+        &self,
+        config: Self::Config,
+        mut layouter: impl Layouter<F>,
+    ) -> Result<(), Error> {
+        let chip = FunctionChip::construct(config);
+        let out_cell = chip.assign(&mut layouter, self.a, self.b)?;
+        chip.expose_public(&mut layouter, out_cell, 0)?;
+        Ok(())
+    }
+}
 
-//             assert_eq!(left, right);
-//         }
-//     }
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::circuits::utils::full_prover;
+    use halo2_proofs::dev::MockProver;
 
-//     #[test]
-//     fn test2() {
-//         fn compress_expressions(expressions: &[U64Type], theta: U64Type) -> U64Type {
-//             expressions
-//                 .iter()
-//                 .cloned()
-//                 .fold(U64Type::one(), |acc, expression| acc * theta + expression)
-//         }
+    use halo2curves::pasta::{pallas, vesta, EqAffine, Fp};
 
-//         let theta = U64Type(2);
-//         let input = vec![U64Type::one(), U64Type(2), U64Type(3)];
-//         let result = compress_expressions(&input, theta);
-//         println!("Result: {:?}", result);
-//     }
+    use bincode;
+    use halo2_proofs::{
+        circuit::{Layouter, SimpleFloorPlanner, Value},
+        plonk::{
+            create_proof, keygen_pk, keygen_vk, verify_proof, Advice, Circuit, Column,
+            ConstraintSystem, Error, Instance,
+        },
+        poly::{
+            commitment::{Params, ParamsProver},
+            ipa::{
+                commitment::{IPACommitmentScheme, ParamsIPA},
+                multiopen::ProverIPA,
+                strategy::SingleStrategy,
+            },
+            VerificationStrategy,
+        },
+        transcript::{
+            Blake2bRead, Blake2bWrite, Challenge255, TranscriptReadBuffer, TranscriptWriterBuffer,
+        },
+    };
+    use rand::rngs::OsRng;
+    use serde::{Deserialize, Serialize};
+    use std::fs::File;
+    use std::io::{Read, Write};
+    use std::path::Path;
 
-//     #[test]
-//     fn test3() {}
-// }
+    #[test]
+    fn test_example3() {
+        let k = 16;
+        let circuit = FunctionCircuit {
+            a: Fp::from(2),
+            b: Fp::from(4),
+        };
+        let public_input = vec![Fp::from(6)];
+
+        // let prover = MockProver::run(k, &circuit, vec![public_input]).unwrap();
+        // prover.assert_satisfied();
+        // full_prover(circuit, k, &public_input);
+
+        let params: ParamsIPA<vesta::Affine> = ParamsIPA::new(k);
+        let proof_path = "/home/cc/halo2-TPCH/src/sql/param16";
+        let mut fd = std::fs::File::create(&proof_path).unwrap();
+        params.write(&mut fd).unwrap();
+
+        // let mut fd = std::fs::File::open(&proof_path).unwrap();
+        // let params = ParamsIPA::<vesta::Affine>::read(&mut fd).unwrap();
+
+        // let vk = keygen_vk(&params, &circuit).expect("keygen_vk should not fail");
+        // let pk = keygen_pk(&params, vk, &circuit).expect("keygen_pk should not fail");
+        // let mut rng = OsRng;
+
+        // let mut transcript = Blake2bWrite::<_, EqAffine, Challenge255<_>>::init(vec![]);
+
+        // let mut transcript = Blake2bWrite::<_, EqAffine, Challenge255<_>>::init(vec![]);
+        // create_proof::<IPACommitmentScheme<_>, ProverIPA<_>, _, _, _, _>(
+        //     &params,
+        //     &pk,
+        //     &[circuit],
+        //     &[&[&public_input]],
+        //     &mut rng,
+        //     &mut transcript,
+        // )
+        // .expect("proof generation should not fail");
+        // let proof = transcript.finalize();
+
+        // let strategy = SingleStrategy::new(&params);
+        // let mut transcript = Blake2bRead::<_, _, Challenge255<_>>::init(&proof[..]);
+        // assert!(verify_proof(
+        //     &params,
+        //     pk.get_vk(),
+        //     strategy,
+        //     &[&[&public_input]],
+        //     &mut transcript
+        // )
+        // .is_ok());
+    }
+}

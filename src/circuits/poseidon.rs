@@ -1,10 +1,11 @@
 // use super::super::chips::poseidon::hash_with_instance::{PoseidonChip, PoseidonConfig};
+// use eth_types::Field;
 // use halo2_gadgets::poseidon::primitives::*;
-// use halo2_proofs::{arithmetic::FieldExt, circuit::*, plonk::*};
+// use halo2_proofs::{circuit::*, plonk::*};
 // use std::marker::PhantomData;
 
 // struct PoseidonCircuit<
-//     F: FieldExt,
+//     F: Field,
 //     S: Spec<F, WIDTH, RATE>,
 //     const WIDTH: usize,
 //     const RATE: usize,
@@ -15,13 +16,8 @@
 //     _spec: PhantomData<S>,
 // }
 
-// impl<
-//         F: FieldExt,
-//         S: Spec<F, WIDTH, RATE>,
-//         const WIDTH: usize,
-//         const RATE: usize,
-//         const L: usize,
-//     > Circuit<F> for PoseidonCircuit<F, S, WIDTH, RATE, L>
+// impl<F: Field, S: Spec<F, WIDTH, RATE>, const WIDTH: usize, const RATE: usize, const L: usize>
+//     Circuit<F> for PoseidonCircuit<F, S, WIDTH, RATE, L>
 // {
 //     type Config = PoseidonConfig<F, WIDTH, RATE, L>;
 //     type FloorPlanner = SimpleFloorPlanner;

@@ -1,4 +1,5 @@
-use eth_types::Field;
+// use eth_types::Field;
+use halo2_proofs::halo2curves::ff::{Field, PrimeField};
 use halo2_proofs::{circuit::*, plonk::*, poly::Rotation};
 
 #[derive(Clone, Debug)]

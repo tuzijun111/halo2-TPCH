@@ -36,7 +36,7 @@ pub(crate) struct Customer {
     pub c_custkey: u64,
     pub c_name: String,
     pub c_address: String,
-    pub c_nationkey: String,
+    pub c_nationkey: u64,
     pub c_phone: String,
     pub c_acctbal: f64,
     pub c_mktsegment: String,
@@ -65,7 +65,7 @@ pub(crate) struct Lineitem {
 
 #[derive(Debug)]
 pub(crate) struct Orders {
-    pub o_orderkey: u64,
+    pub o_orderkey: u64, // primary key
     pub o_custkey: u64,
     pub o_orderstatus: String,
     pub o_totoalprice: f64,
@@ -159,7 +159,7 @@ pub(crate) fn customer_read_records_from_file(file_path: &str) -> Result<Vec<Cus
             c_custkey: fields[0].parse().unwrap(),
             c_name: fields[1].to_string(),
             c_address: fields[2].to_string(),
-            c_nationkey: fields[3].to_string(),
+            c_nationkey: fields[3].parse().unwrap(),
             c_phone: fields[4].to_string(),
             c_acctbal: fields[5].parse().unwrap(),
             c_mktsegment: fields[6].to_string(),
@@ -330,9 +330,10 @@ mod tests {
         // Call the function with different file paths
 
         if let Ok(records) =
-            customer_read_records_from_file("/Users/binbingu/halo2-TPCH/src/data/customer.tbl")
+            // customer_read_records_from_file("/Users/binbingu/halo2-TPCH/src/data/customer.tbl")
+            customer_read_records_from_file("/home/cc/halo2-TPCH/src/data/customer.tbl")
         {
-            println!("{:?}", string_to_u64(&records[0].c_mktsegment));
+            println!("{:?}", string_to_u64(&records[4].c_mktsegment));
         } else {
             println!("Failed to read records from file1");
         }
@@ -355,12 +356,11 @@ mod tests {
             println!("Failed to read records from file1");
         }
 
-        // if let Ok(records) =
-        //     region_read_records_from_csv("/Users/binbingu/halo2-TPCH/src/data/region.cvs")
-        // {
-        //     println!("{:?}", string_to_u64(&records[0].r_name));
-        // } else {
-        //     println!("Failed to read records from file2");
-        // }
+        if let Ok(records) = region_read_records_from_csv("/home/cc/halo2-TPCH/src/data/region.cvs")
+        {
+            println!("{:?}", string_to_u64(&records[3].r_name));
+        } else {
+            println!("Failed to read records from file2");
+        }
     }
 }

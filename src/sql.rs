@@ -6,8 +6,13 @@ pub mod q1_v2;
 pub mod q1_v3;
 pub mod q3_final_v1;
 pub mod q3_final_v2;
+pub mod q3_final_v3;
+pub mod q3_final_v4;
+pub mod q3_final_v5;
+
 pub mod q5_final_v1;
 pub mod q5_final_v2;
+pub mod q5_final_v3;
 
 pub mod q18_final_v1;
 pub mod q19_final_v1;

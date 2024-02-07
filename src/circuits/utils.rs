@@ -1,31 +1,25 @@
 use halo2_proofs::{
-    halo2curves::bn256::{Fr as Fp, Bn256, G1Affine}, 
+    halo2curves::bn256::{Bn256, Fr as Fp, G1Affine},
+    plonk::{create_proof, keygen_pk, keygen_vk, verify_proof, Circuit},
     poly::{
         commitment::ParamsProver,
         kzg::{
-        commitment::{
-            ParamsKZG,
-            KZGCommitmentScheme,
-        },
-        strategy::SingleStrategy,
-        multiopen::{ProverSHPLONK, VerifierSHPLONK}
+            commitment::{KZGCommitmentScheme, ParamsKZG},
+            multiopen::{ProverSHPLONK, VerifierSHPLONK},
+            strategy::SingleStrategy,
         },
     },
-    plonk::{
-        create_proof, verify_proof, keygen_pk, keygen_vk, Circuit
+    transcript::{
+        Blake2bRead, Blake2bWrite, Challenge255, TranscriptReadBuffer, TranscriptWriterBuffer,
     },
-    transcript::{Blake2bRead, Blake2bWrite, Challenge255, TranscriptReadBuffer, TranscriptWriterBuffer},
 };
-use std::time::Instant;
 use rand::rngs::OsRng;
+use std::time::Instant;
 
-pub fn full_prover <C: Circuit<Fp>> (
-    circuit: C,
-    k: u32,
-    public_input: &[Fp]
-) {
-
+pub fn full_prover<C: Circuit<Fp>>(circuit: C, k: u32, public_input: &[Fp]) {
+    let params_time_start = Instant::now();
     let params = ParamsKZG::<Bn256>::setup(k, OsRng);
+    let params_time = params_time_start.elapsed();
 
     let vk_time_start = Instant::now();
     let vk = keygen_vk(&params, &circuit).unwrap();
@@ -44,7 +38,14 @@ pub fn full_prover <C: Circuit<Fp>> (
         _,
         Blake2bWrite<Vec<u8>, G1Affine, Challenge255<G1Affine>>,
         _,
-    >(&params, &pk, &[circuit], &[&[public_input]], OsRng, &mut transcript)
+    >(
+        &params,
+        &pk,
+        &[circuit],
+        &[&[public_input]],
+        OsRng,
+        &mut transcript,
+    )
     .expect("prover should not fail");
     let proof = transcript.finalize();
     let proof_time = proof_time_start.elapsed();
@@ -59,10 +60,17 @@ pub fn full_prover <C: Circuit<Fp>> (
         Challenge255<G1Affine>,
         Blake2bRead<&[u8], G1Affine, Challenge255<G1Affine>>,
         SingleStrategy<'_, Bn256>,
-    >(verifier_params, pk.get_vk(), strategy, &[&[public_input]], &mut transcript)
+    >(
+        verifier_params,
+        pk.get_vk(),
+        strategy,
+        &[&[public_input]],
+        &mut transcript
+    )
     .is_ok());
     let verify_time = verify_time_start.elapsed();
 
+    println!("Time to generate params {:?}", params_time);
     println!("Time to generate vk {:?}", vk_time);
     println!("Time to generate pk {:?}", pk_time);
     println!("Prover Time {:?}", proof_time);

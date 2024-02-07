@@ -1,24 +1,29 @@
-use eth_types::Field;
+// use eth_types::Field;
+use halo2_proofs::{halo2curves::ff::PrimeField, plonk::Expression};
 
 use halo2_proofs::{circuit::*, plonk::*, poly::Rotation};
 
+// pub trait Field: PrimeField<Repr = [u8; 32]> {}
+
+// impl<F> Field for F where F: PrimeField<Repr = [u8; 32]> {}
+
 #[derive(Clone, Debug)]
-pub struct IsZeroConfig<F: Field> {
+pub struct IsZeroConfig<F: PrimeField> {
     pub value_inv: Column<Advice>,
     pub is_zero_expr: Expression<F>,
 }
 
-impl<F: Field> IsZeroConfig<F> {
+impl<F: PrimeField> IsZeroConfig<F> {
     pub fn expr(&self) -> Expression<F> {
         self.is_zero_expr.clone()
     }
 }
 
-pub struct IsZeroChip<F: Field> {
+pub struct IsZeroChip<F: PrimeField> {
     config: IsZeroConfig<F>,
 }
 
-impl<F: Field> IsZeroChip<F> {
+impl<F: PrimeField> IsZeroChip<F> {
     pub fn construct(config: IsZeroConfig<F>) -> Self {
         IsZeroChip { config }
     }

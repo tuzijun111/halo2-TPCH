@@ -19,5 +19,6 @@ pub mod poseidon;
 
 pub mod less_than_v1_test;
 pub mod permutation_any_test;
+pub mod poseidon_test;
 pub mod safe_accumulator;
 pub mod utils;
