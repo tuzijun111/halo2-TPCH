@@ -11,6 +11,7 @@ pub mod is_zero_v2;
 
 pub mod less_than;
 pub mod lessthan_or_equal;
+pub mod lessthan_or_equal_generic;
 
 pub mod less_than_v1_test;
 pub mod merkle_sum_tree;

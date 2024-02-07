@@ -72,12 +72,10 @@
 //     equal_condition: Vec<IsZeroConfig<F>>,
 //     compare_condition: Vec<LtEqGenericConfig<F, NUM_BYTES>>,
 //     // perm: Vec<PermAnyConfig>,
-
 //     instance: Column<Instance>,
 //     instance_test: Column<Advice>,
 //     instance_test1: Column<Advice>,
 //     instance_test2: Column<Advice>,
-
 // }
 
 // #[derive(Debug, Clone)]
@@ -157,14 +155,14 @@
 //         let mut join_group = Vec::new();
 //         let mut disjoin_group = Vec::new();
 
-//         for l in [4,2, 4,6] {
+//         for l in [4, 2, 4, 6] {
 //             let mut col = Vec::new();
 //             for _ in 0..l {
 //                 col.push(meta.advice_column());
 //             }
 //             join_group.push(col);
 //         }
-//         for l in [4,2, 4,6] {
+//         for l in [4, 2, 4, 6] {
 //             let mut col = Vec::new();
 //             for _ in 0..l {
 //                 col.push(meta.advice_column());
@@ -173,20 +171,19 @@
 //         }
 
 //         let mut perm_helper = Vec::new();
-//         for l in [4,2, 4] {
+//         for l in [4, 2, 4] {
 //             let mut col = Vec::new();
 //             for _ in 0..l {
 //                 col.push(meta.advice_column());
 //             }
 //             perm_helper.push(col);
-
 //         }
 
-//         let mut join1 = Vec::new();  // for c table
+//         let mut join1 = Vec::new(); // for c table
 //         for _ in 0..2 {
 //             join1.push(meta.advice_column());
 //         }
-//         let mut join2 = Vec::new();  // for c join o
+//         let mut join2 = Vec::new(); // for c join o
 //         for _ in 0..6 {
 //             join2.push(meta.advice_column());
 //         }
@@ -310,7 +307,10 @@
 
 //         for (disjoin_index, column_index) in lookup_configs.iter() {
 //             meta.lookup_any("dedup check", |meta| {
-//                 let input = meta.query_advice(disjoin_group[*disjoin_index][*column_index], Rotation::cur());
+//                 let input = meta.query_advice(
+//                     disjoin_group[*disjoin_index][*column_index],
+//                     Rotation::cur(),
+//                 );
 //                 let table = meta.query_advice(deduplicate[*disjoin_index], Rotation::cur());
 //                 vec![(input, table)]
 //             });
@@ -318,9 +318,27 @@
 
 //         // two permutation check: join and disjoin
 
-//         PermAnyChip::configure(meta, q_join[2], q_join[3],orders.clone(), perm_helper[0].clone());
-//         PermAnyChip::configure(meta, q_join[4],q_join[5], customer.clone(), perm_helper[1].clone());
-//         PermAnyChip::configure(meta, q_join[6], q_join[7],lineitem.clone(), perm_helper[2].clone());
+//         PermAnyChip::configure(
+//             meta,
+//             q_join[2],
+//             q_join[3],
+//             orders.clone(),
+//             perm_helper[0].clone(),
+//         );
+//         PermAnyChip::configure(
+//             meta,
+//             q_join[4],
+//             q_join[5],
+//             customer.clone(),
+//             perm_helper[1].clone(),
+//         );
+//         PermAnyChip::configure(
+//             meta,
+//             q_join[6],
+//             q_join[7],
+//             lineitem.clone(),
+//             perm_helper[2].clone(),
+//         );
 
 //         // two dedup permutation check: deduplicate and dedup_sort
 //         meta.lookup_any("dedup permtuation check", |meta| {
@@ -342,7 +360,7 @@
 //             |meta| {
 //                 let q = meta.query_selector(q_join[0]);
 //                 let p1 = meta.query_advice(join_group[0][2], Rotation::cur());
-//                 let p2= meta.query_advice(join1[1], Rotation::cur());
+//                 let p2 = meta.query_advice(join1[1], Rotation::cur());
 //                 vec![q * (p1 - p2)]
 //             },
 //         );
@@ -379,7 +397,7 @@
 //             |meta| {
 //                 let q = meta.query_selector(q_join[1]);
 //                 let p1 = meta.query_advice(join_group[2][0], Rotation::cur());
-//                 let p2= meta.query_advice(join2[3], Rotation::cur());
+//                 let p2 = meta.query_advice(join2[3], Rotation::cur());
 //                 vec![q * (p1 - p2)]
 //             },
 //         );
@@ -1324,7 +1342,6 @@
 //     ) -> Result<(), Error> {
 //         layouter.constrain_instance(cell.cell(), self.config.instance, row)
 //     }
-
 // }
 
 // struct MyCircuit<F> {
@@ -1479,7 +1496,10 @@
 //                 .collect();
 //         }
 
-//         let condition = [Fp::from(string_to_u64("HOUSEHOLD")), Fp::from(date_to_timestamp("1995-03-25"))];
+//         let condition = [
+//             Fp::from(string_to_u64("HOUSEHOLD")),
+//             Fp::from(date_to_timestamp("1995-03-25")),
+//         ];
 //         // c_mktsegment = 'HOUSEHOLD'   -> 3367
 //         // o_orderdate < date '1995-03-25'and l_shipdate > date '1995-03-25'  ->796089600
 //         //  BUILDING ->   2651;    1996-03-13 -> 2731
@@ -1529,6 +1549,5 @@
 //         // prover.assert_satisfied();
 
 //         full_prover(circuit, k, &public_input);
-
 //     }
 // }

@@ -248,13 +248,13 @@ mod tests {
         // prover.assert_satisfied();
         // full_prover(circuit, k, &public_input);
 
-        let params: ParamsIPA<vesta::Affine> = ParamsIPA::new(k);
-        let proof_path = "/home/cc/halo2-TPCH/src/sql/param16";
-        let mut fd = std::fs::File::create(&proof_path).unwrap();
-        params.write(&mut fd).unwrap();
+        let params_path = "/home/cc/halo2-TPCH/src/sql/param16";
+        // let params: ParamsIPA<vesta::Affine> = ParamsIPA::new(k);
+        // let mut fd = std::fs::File::create(&params_path).unwrap();
+        // params.write(&mut fd).unwrap();
 
-        // let mut fd = std::fs::File::open(&proof_path).unwrap();
-        // let params = ParamsIPA::<vesta::Affine>::read(&mut fd).unwrap();
+        let mut fd = std::fs::File::open(&params_path).unwrap();
+        let params = ParamsIPA::<vesta::Affine>::read(&mut fd).unwrap();
 
         // let vk = keygen_vk(&params, &circuit).expect("keygen_vk should not fail");
         // let pk = keygen_pk(&params, vk, &circuit).expect("keygen_pk should not fail");
