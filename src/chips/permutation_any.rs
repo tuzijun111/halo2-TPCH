@@ -56,18 +56,6 @@ impl<'a, F: Field> PermAnyChip<F> {
             meta.enable_equality(col);
         }
 
-        // meta.shuffle("permutation check", |meta| {
-        //     let q = meta.query_selector(q_enable.clone());
-
-        //     let k = input.len();
-        //     let mut vectors = Vec::new();
-        //     for i in 0..k {
-        //         let input = meta.query_advice(input[i], Rotation::cur());
-        //         let table = meta.query_advice(table[i], Rotation::cur());
-        //         vectors.push((q.clone() * input, table));
-        //     }
-        //     vectors
-        // });
         meta.shuffle("permutation check any", |meta| {
             // Inputs
             let q1 = meta.query_selector(q_perm1);

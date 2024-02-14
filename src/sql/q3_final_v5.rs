@@ -1008,14 +1008,14 @@ impl<F: Field + Ord> TestChip<F> {
                         }
                     }
                 }
-                for i in 0..disjoin_value[0].len()+disjoin_value[0].len() {
+                for i in 0..join_value[0].len()+disjoin_value[0].len() {
                     self.config.q_join[3].enable(&mut region, i)?;
                 }
 
-                for i in 0..disjoin_value[1].len()+disjoin_value[1].len() {
+                for i in 0..join_value[1].len()+disjoin_value[1].len() {
                     self.config.q_join[5].enable(&mut region, i)?;
                 }
-                for i in 0..disjoin_value[2].len()+disjoin_value[2].len() {
+                for i in 0..join_value[2].len()+disjoin_value[2].len() {
                     self.config.q_join[7].enable(&mut region, i)?;
                 }
                 // println!{"Join Value: {:?}", join_value[0].len()};

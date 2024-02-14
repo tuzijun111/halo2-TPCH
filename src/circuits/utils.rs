@@ -2,7 +2,7 @@ use halo2_proofs::{
     halo2curves::bn256::{Bn256, Fr as Fp, G1Affine},
     plonk::{create_proof, keygen_pk, keygen_vk, verify_proof, Circuit},
     poly::{
-        commitment::ParamsProver,
+        commitment::{Params, ParamsProver},
         kzg::{
             commitment::{KZGCommitmentScheme, ParamsKZG},
             multiopen::{ProverSHPLONK, VerifierSHPLONK},
@@ -15,11 +15,16 @@ use halo2_proofs::{
 };
 use rand::rngs::OsRng;
 use std::time::Instant;
+use std::{fs::File, io::Write, path::Path};
 
-pub fn full_prover<C: Circuit<Fp>>(circuit: C, k: u32, public_input: &[Fp]) {
-    let params_time_start = Instant::now();
-    let params = ParamsKZG::<Bn256>::setup(k, OsRng);
-    let params_time = params_time_start.elapsed();
+pub fn full_prover<C: Circuit<Fp>>(circuit: C, k: u32, public_input: &[Fp], proof_path: &str) {
+    // let params = ParamsKZG::<Bn256>::setup(k, OsRng);
+    let params_path = "/home/cc/halo2-TPCH/src/sql/kzg_param16";
+    // let mut fd = std::fs::File::create(&params_path).unwrap();
+    // params.write(&mut fd).unwrap();
+
+    let mut fd = std::fs::File::open(&params_path).unwrap();
+    let params = ParamsKZG::<Bn256>::read(&mut fd).unwrap();
 
     let vk_time_start = Instant::now();
     let vk = keygen_vk(&params, &circuit).unwrap();
@@ -48,6 +53,12 @@ pub fn full_prover<C: Circuit<Fp>>(circuit: C, k: u32, public_input: &[Fp]) {
     )
     .expect("prover should not fail");
     let proof = transcript.finalize();
+    // Write proof to file
+    File::create(Path::new(proof_path))
+        .expect("Failed to create proof file")
+        .write_all(&proof)
+        .expect("Failed to write proof");
+
     let proof_time = proof_time_start.elapsed();
 
     let verifier_params = params.verifier_params();
@@ -70,7 +81,7 @@ pub fn full_prover<C: Circuit<Fp>>(circuit: C, k: u32, public_input: &[Fp]) {
     .is_ok());
     let verify_time = verify_time_start.elapsed();
 
-    println!("Time to generate params {:?}", params_time);
+    // println!("Time to generate params {:?}", params_time);
     println!("Time to generate vk {:?}", vk_time);
     println!("Time to generate pk {:?}", pk_time);
     println!("Prover Time {:?}", proof_time);

@@ -8,7 +8,6 @@ use halo2_proofs::{
     poly::Rotation,
 };
 use std::cmp::Ord;
-
 pub trait Field: PrimeField<Repr = [u8; 32]> {}
 
 impl<F> Field for F where F: PrimeField<Repr = [u8; 32]> {}
@@ -133,8 +132,6 @@ impl<F: Field + Ord, const N_BYTES: usize> LtInstruction<F> for LtChip<F, N_BYTE
             offset,
             || lt.map(|lt| F::from(lt as u64)),
         )?;
-
-        let mut is_zero_expr = Expression::Constant(F::ZERO);
 
         let diff_bytes = lhs.zip(rhs).map(|(lhs, rhs)| {
             let mut diff = lhs - rhs;

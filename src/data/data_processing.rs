@@ -33,7 +33,7 @@ pub(crate) struct Part {
 
 #[derive(Debug)]
 pub(crate) struct Customer {
-    pub c_custkey: u64,
+    pub c_custkey: u64, // primary key
     pub c_name: String,
     pub c_address: String,
     pub c_nationkey: u64,
@@ -68,7 +68,7 @@ pub(crate) struct Orders {
     pub o_orderkey: u64, // primary key
     pub o_custkey: u64,
     pub o_orderstatus: String,
-    pub o_totoalprice: f64,
+    pub o_totalprice: f64,
     pub o_orderdate: String,
     pub o_orderpriority: String,
     pub o_clerk: String,
@@ -219,7 +219,7 @@ pub(crate) fn orders_read_records_from_file(file_path: &str) -> Result<Vec<Order
             o_orderkey: fields[0].parse().unwrap(),
             o_custkey: fields[1].parse().unwrap(),
             o_orderstatus: fields[2].to_string(),
-            o_totoalprice: fields[3].parse().unwrap(),
+            o_totalprice: fields[3].parse().unwrap(),
             o_orderdate: fields[4].to_string(),
             o_orderpriority: fields[5].parse().unwrap(),
             o_clerk: fields[6].to_string(),

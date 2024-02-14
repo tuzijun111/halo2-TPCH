@@ -10,8 +10,11 @@ pub mod is_zero_v1;
 pub mod is_zero_v2;
 
 pub mod less_than;
+pub mod less_than_vector;
 pub mod lessthan_or_equal;
 pub mod lessthan_or_equal_generic;
+pub mod lessthan_or_equal_v1;
+pub mod lessthan_or_equal_vector;
 
 pub mod less_than_v1_test;
 pub mod merkle_sum_tree;
