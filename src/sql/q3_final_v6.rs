@@ -23,7 +23,7 @@ use std::mem;
 use std::process;
 use std::time::Instant;
 
-const NUM_BYTES: usize = 5;
+const NUM_BYTES: usize = 4;
 
 pub trait Field: PrimeField<Repr = [u8; 32]> {}
 
@@ -288,124 +288,124 @@ impl<F: Field + Ord> TestChip<F> {
         );
         lt_compare_condition.push(config);
 
-        // // disjoin sort check
-        // // dedup check
-        // let lookup_configs = [
-        //     (0, 2), // (disjoin_group index, column index)
-        //     (1, 1),
-        //     (2, 0),
-        //     (3, 3),
-        // ];
+        // disjoin sort check
+        // dedup check
+        let lookup_configs = [
+            (0, 2), // (disjoin_group index, column index)
+            (1, 1),
+            (2, 0),
+            (3, 3),
+        ];
 
-        // for (disjoin_index, column_index) in lookup_configs.iter() {
-        //     meta.lookup_any("dedup check", |meta| {
-        //         let input = meta.query_advice(
-        //             disjoin_group[*disjoin_index][*column_index],
-        //             Rotation::cur(),
-        //         );
-        //         let table = meta.query_advice(deduplicate[*disjoin_index], Rotation::cur());
-        //         vec![(input, table)]
-        //     });
-        // }
+        for (disjoin_index, column_index) in lookup_configs.iter() {
+            meta.lookup_any("dedup check", |meta| {
+                let input = meta.query_advice(
+                    disjoin_group[*disjoin_index][*column_index],
+                    Rotation::cur(),
+                );
+                let table = meta.query_advice(deduplicate[*disjoin_index], Rotation::cur());
+                vec![(input, table)]
+            });
+        }
 
-        // // two permutation check: join and disjoin
+        // two permutation check: join and disjoin
 
-        // PermAnyChip::configure(
-        //     meta,
-        //     q_join[2],
-        //     q_join[5],
-        //     orders.clone(),
-        //     perm_helper[0].clone(),
-        // );
-        // PermAnyChip::configure(
-        //     meta,
-        //     q_join[3],
-        //     q_join[6],
-        //     customer.clone(),
-        //     perm_helper[1].clone(),
-        // );
+        PermAnyChip::configure(
+            meta,
+            q_join[2],
+            q_join[5],
+            orders.clone(),
+            perm_helper[0].clone(),
+        );
+        PermAnyChip::configure(
+            meta,
+            q_join[3],
+            q_join[6],
+            customer.clone(),
+            perm_helper[1].clone(),
+        );
 
-        // PermAnyChip::configure(
-        //     meta,
-        //     q_join[4],
-        //     q_join[7],
-        //     lineitem.clone(),
-        //     perm_helper[2].clone(),
-        // );
+        PermAnyChip::configure(
+            meta,
+            q_join[4],
+            q_join[7],
+            lineitem.clone(),
+            perm_helper[2].clone(),
+        );
 
-        // // two dedup permutation check: deduplicate and dedup_sort
-        // meta.lookup_any("dedup permtuation check", |meta| {
-        //     let input = meta.query_advice(deduplicate_helper[0], Rotation::cur());
-        //     let table = meta.query_advice(dedup_sort[0], Rotation::cur());
-        //     vec![(input, table)]
-        // });
-        // meta.lookup_any("dedup permtuation check", |meta| {
-        //     let input = meta.query_advice(deduplicate_helper[1], Rotation::cur());
-        //     let table = meta.query_advice(dedup_sort[1], Rotation::cur());
-        //     vec![(input, table)]
-        // });
+        // two dedup permutation check: deduplicate and dedup_sort
+        meta.lookup_any("dedup permtuation check", |meta| {
+            let input = meta.query_advice(deduplicate_helper[0], Rotation::cur());
+            let table = meta.query_advice(dedup_sort[0], Rotation::cur());
+            vec![(input, table)]
+        });
+        meta.lookup_any("dedup permtuation check", |meta| {
+            let input = meta.query_advice(deduplicate_helper[1], Rotation::cur());
+            let table = meta.query_advice(dedup_sort[1], Rotation::cur());
+            vec![(input, table)]
+        });
 
-        // // join1 check
-        // meta.create_gate(
-        //     "verify join1 values match'", // just use less_than for testing here
-        //     |meta| {
-        //         let q = meta.query_selector(q_join[0]);
-        //         let p1 = meta.query_advice(join_group[0][2], Rotation::cur());
-        //         let p2 = meta.query_advice(join1[1], Rotation::cur());
-        //         vec![q * (p1 - p2)]
-        //     },
-        // );
+        // join1 check
+        meta.create_gate(
+            "verify join1 values match'", // just use less_than for testing here
+            |meta| {
+                let q = meta.query_selector(q_join[0]);
+                let p1 = meta.query_advice(join_group[0][2], Rotation::cur());
+                let p2 = meta.query_advice(join1[1], Rotation::cur());
+                vec![q * (p1 - p2)]
+            },
+        );
 
-        // // all values of join1 are in join_group[1]
-        // meta.lookup_any("check join1", |meta| {
-        //     let inputs: Vec<_> = join_group[1] // join1
-        //         .iter()
-        //         .map(|&idx| meta.query_advice(idx, Rotation::cur()))
-        //         .collect();
+        // all values of join1 are in join_group[1]
+        meta.lookup_any("check join1", |meta| {
+            let inputs: Vec<_> = join_group[1] // join1
+                .iter()
+                .map(|&idx| meta.query_advice(idx, Rotation::cur()))
+                .collect();
 
-        //     let tables: Vec<_> = join1 //join_group[1]
-        //         .iter()
-        //         .map(|&idx| meta.query_advice(idx, Rotation::cur()))
-        //         .collect();
+            let tables: Vec<_> = join1 //join_group[1]
+                .iter()
+                .map(|&idx| meta.query_advice(idx, Rotation::cur()))
+                .collect();
 
-        //     let constraints: Vec<_> = inputs
-        //         .iter()
-        //         .zip(tables.iter())
-        //         .map(|(input, table)| (input.clone(), table.clone()))
-        //         .collect();
+            let constraints: Vec<_> = inputs
+                .iter()
+                .zip(tables.iter())
+                .map(|(input, table)| (input.clone(), table.clone()))
+                .collect();
 
-        //     constraints
-        // });
+            constraints
+        });
 
-        // // join2 check
-        // meta.create_gate(
-        //     "verify join2 values match'", // just use less_than for testing here
-        //     |meta| {
-        //         let q = meta.query_selector(q_join[1]);
-        //         let p1 = meta.query_advice(join_group[2][0], Rotation::cur());
-        //         let p2 = meta.query_advice(join2[3], Rotation::cur());
-        //         vec![q * (p1 - p2)]
-        //     },
-        // );
-        // meta.lookup_any("check join2", |meta| {
-        //     let inputs: Vec<_> = join2
-        //         .iter()
-        //         .map(|&idx| meta.query_advice(idx, Rotation::cur()))
-        //         .collect();
+        // join2 check
+        meta.create_gate(
+            "verify join2 values match'", // just use less_than for testing here
+            |meta| {
+                let q = meta.query_selector(q_join[1]);
+                let p1 = meta.query_advice(join_group[2][0], Rotation::cur());
+                let p2 = meta.query_advice(join2[3], Rotation::cur());
+                vec![q * (p1 - p2)]
+            },
+        );
+        meta.lookup_any("check join2", |meta| {
+            let inputs: Vec<_> = join2
+                .iter()
+                .map(|&idx| meta.query_advice(idx, Rotation::cur()))
+                .collect();
 
-        //     let tables: Vec<_> = join_group[3]
-        //         .iter()
-        //         .map(|&idx| meta.query_advice(idx, Rotation::cur()))
-        //         .collect();
+            let tables: Vec<_> = join_group[3]
+                .iter()
+                .map(|&idx| meta.query_advice(idx, Rotation::cur()))
+                .collect();
 
-        //     let constraints: Vec<_> = inputs
-        //         .iter()
-        //         .zip(tables.iter())
-        //         .map(|(input, table)| (input.clone(), table.clone()))
-        //         .collect();
+            let constraints: Vec<_> = inputs
+                .iter()
+                .zip(tables.iter())
+                .map(|(input, table)| (input.clone(), table.clone()))
+                .collect();
 
-        //     constraints
-        // });
+            constraints
+        });
 
         // two dedup sort check
         for i in 0..2 {
@@ -446,25 +446,25 @@ impl<F: Field + Ord> TestChip<F> {
         // );
         // compare_condition.push(config);
 
-        // // sum gate: sum(l_extendedprice * (1 - l_discount)) as revenue, note that revenue column starts by zero and its length is 1 more than others
-        // meta.create_gate("accumulate constraint", |meta| {
-        //     let q_accu = meta.query_selector(q_accu);
-        //     let prev_revenue = meta.query_advice(revenue.clone(), Rotation::cur());
-        //     let extendedprice = meta.query_advice(groupby[3], Rotation::cur());
-        //     let discount = meta.query_advice(groupby[4], Rotation::cur());
-        //     let sum_revenue = meta.query_advice(revenue, Rotation::next());
-        //     let check = meta.query_advice(equal_check, Rotation::cur());
+        // sum gate: sum(l_extendedprice * (1 - l_discount)) as revenue, note that revenue column starts by zero and its length is 1 more than others
+        meta.create_gate("accumulate constraint", |meta| {
+            let q_accu = meta.query_selector(q_accu);
+            let prev_revenue = meta.query_advice(revenue.clone(), Rotation::cur());
+            let extendedprice = meta.query_advice(groupby[3], Rotation::cur());
+            let discount = meta.query_advice(groupby[4], Rotation::cur());
+            let sum_revenue = meta.query_advice(revenue, Rotation::next());
+            let check = meta.query_advice(equal_check, Rotation::cur());
 
-        //     vec![
-        //         q_accu.clone()
-        //             * (check.clone() * prev_revenue
-        //                 + extendedprice.clone()
-        //                     * (Expression::Constant(F::from(1000)) - discount.clone())
-        //                 - sum_revenue),
-        //     ]
-        // });
+            vec![
+                q_accu.clone()
+                    * (check.clone() * prev_revenue
+                        + extendedprice.clone()
+                            * (Expression::Constant(F::from(1000)) - discount.clone())
+                        - sum_revenue),
+            ]
+        });
 
-        // // orderby
+        // orderby
 
         // // (1) revenue[i-1] > revenue[i]
         // let config = LtEqVecChip::configure(
@@ -634,7 +634,6 @@ impl<F: Field + Ord> TestChip<F> {
             .filter(|row| row[3] > condition[1]) // r_name = ':3'
             .collect();
 
-        // println!{"Orders: {:?}", o_combined.len()};
         // println!{"Customer: {:?}", c_combined.len()};
 
         let mut combined = Vec::new();
@@ -660,27 +659,6 @@ impl<F: Field + Ord> TestChip<F> {
         let mut join_value: Vec<Vec<_>> = vec![vec![]; 4];
         let mut disjoin_value: Vec<Vec<_>> = vec![vec![]; 4];
 
-        // join_value [combined[1], combined[0], combined[2], join_1]
-        // for val in combined[1].iter() {
-        //     if let Some(_) = combined[0]
-        //         .iter()
-        //         .find(|v| v[index[0].2] == val[index[0].3])
-        //     {
-        //         join_value[0].push(val.clone()); // join values
-        //     } else {
-        //         disjoin_value[0].push(val); // disjoin values
-        //     }
-        // }
-        // for val in combined[0].iter() {
-        //     if let Some(_) = combined[1]
-        //         .iter()
-        //         .find(|v| v[index[0].3] == val[index[0].2])
-        //     {
-        //         join_value[1].push(val.clone()); // join values
-        //     } else {
-        //         disjoin_value[1].push(val); // disjoin values
-        //     }
-        // }
         let mut map = HashMap::new();
 
         // Populate the map with elements from the first vector, using the join key as the map key
@@ -1499,7 +1477,7 @@ mod tests {
         // Time to generate parameters
         // let params_time_start = Instant::now();
         // let params: ParamsIPA<vesta::Affine> = ParamsIPA::new(k);
-        let params_path = "/home/cc/halo2-TPCH/src/sql/param16";
+        let params_path = "/home/cc/halo2-TPCH/src/sql/param17";
         // let mut fd = std::fs::File::create(&proof_path).unwrap();
         // params.write(&mut fd).unwrap();
         // println!("Time to generate params {:?}", params_time);
@@ -1584,6 +1562,23 @@ mod tests {
             }
         }
 
+        fn compact_date_representation(date_str: &str, base_year: u64) -> u64 {
+            let parts: Vec<&str> = date_str.split('-').collect();
+
+            let year: u64 = parts[0].parse().unwrap();
+            let month: u64 = parts[1].parse().unwrap();
+            let day: u64 = parts[2].parse().unwrap();
+
+            // Calculate the year offset from the base year
+            let year_offset = year - base_year;
+
+            // Combine components into a compact representation
+            // Adjust the formula as needed to fit your specific requirements
+            let compact_date = year_offset * 10000 + month * 100 + day;
+
+            compact_date
+        }
+
         // let customer_file_path = "/Users/binbingu/halo2-TPCH/src/data/customer.tbl";
         // let orders_file_path = "/Users/binbingu/halo2-TPCH/src/data/orders.tbl";
         // let lineitem_file_path = "/Users/binbingu/halo2-TPCH/src/data/lineitem.tbl";
@@ -1595,49 +1590,6 @@ mod tests {
         let mut customer: Vec<Vec<u64>> = Vec::new();
         let mut orders: Vec<Vec<u64>> = Vec::new();
         let mut lineitem: Vec<Vec<u64>> = Vec::new();
-
-        // if let Ok(records) = data_processing::customer_read_records_from_file(customer_file_path) {
-        //     // Convert the Vec<Region> to a 2D vector
-        //     customer = records
-        //         .iter()
-        //         .map(|record| {
-        //             vec![
-        //                 Fp::from(string_to_u64(&record.c_mktsegment)),
-        //                 Fp::from(record.c_custkey),
-        //             ]
-        //         })
-        //         .collect();
-        // }
-        // if let Ok(records) = data_processing::orders_read_records_from_file(orders_file_path) {
-        //     // Convert the Vec<Region> to a 2D vector
-        //     orders = records
-        //         .iter()
-        //         .map(|record| {
-        //             vec![
-        //                 // Fp::from(string_to_u64(&record.o_orderdate)),
-        //                 Fp::from(date_to_timestamp(&record.o_orderdate)),
-        //                 Fp::from(record.o_shippriority),
-        //                 Fp::from(record.o_custkey),
-        //                 Fp::from(record.o_orderkey),
-        //             ]
-        //         })
-        //         .collect();
-        // }
-        // if let Ok(records) = data_processing::lineitem_read_records_from_file(lineitem_file_path) {
-        //     // Convert the Vec<Region> to a 2D vector
-        //     lineitem = records
-        //         .iter()
-        //         .map(|record| {
-        //             vec![
-        //                 Fp::from(record.l_orderkey),
-        //                 Fp::from(scale_by_1000(record.l_extendedprice)),
-        //                 Fp::from(scale_by_1000(record.l_discount)),
-        //                 // Fp::from(string_to_u64(&record.l_shipdate)),
-        //                 Fp::from(date_to_timestamp(&record.l_shipdate)),
-        //             ]
-        //         })
-        //         .collect();
-        // }
 
         if let Ok(records) = data_processing::customer_read_records_from_file(customer_file_path) {
             // Convert the Vec<Region> to a 2D vector
@@ -1652,8 +1604,8 @@ mod tests {
                 .iter()
                 .map(|record| {
                     vec![
-                        // Fp::from(string_to_u64(&record.o_orderdate)),
-                        date_to_timestamp(&record.o_orderdate),
+                        // date_to_timestamp(&record.o_orderdate),
+                        compact_date_representation(&record.o_orderdate, 1980),
                         record.o_shippriority,
                         record.o_custkey,
                         record.o_orderkey,
@@ -1671,20 +1623,26 @@ mod tests {
                         scale_by_1000(record.l_extendedprice),
                         scale_by_1000(record.l_discount),
                         // Fp::from(string_to_u64(&record.l_shipdate)),
-                        date_to_timestamp(&record.l_shipdate),
+                        // date_to_timestamp(&record.l_shipdate),
+                        compact_date_representation(&record.l_shipdate, 1980),
                     ]
                 })
                 .collect();
         }
 
-        let condition = [string_to_u64("HOUSEHOLD"), date_to_timestamp("1995-03-25")];
+        let condition = [
+            string_to_u64("HOUSEHOLD"),
+            compact_date_representation("1995-03-25", 1980),
+        ];
+        // let condition = [string_to_u64("HOUSEHOLD"), date_to_timestamp("1995-03-25")];
+
         // c_mktsegment = 'HOUSEHOLD'   -> 3367
         // o_orderdate < date '1995-03-25'and l_shipdate > date '1995-03-25'  ->796089600
         //  BUILDING ->   2651;    1996-03-13 -> 2731
 
         // let customer: Vec<Vec<u64>> = customer.iter().take(100).cloned().collect();
         // let orders: Vec<Vec<u64>> = orders.iter().take(100).cloned().collect();
-        // let lineitem: Vec<Vec<u64>> = lineitem.iter().take(1000).cloned().collect();
+        let lineitem: Vec<Vec<u64>> = lineitem.iter().take(100).cloned().collect();
 
         let circuit = MyCircuit::<Fp> {
             customer,

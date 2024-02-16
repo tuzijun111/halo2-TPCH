@@ -348,6 +348,8 @@ impl<F: Field + Ord> TestChip<F> {
             .filter(|row| row[6] <= right_shipdate) // l_shipdate <= date '1998-12-01' - interval ':1' day (3)
             .collect();
 
+        println! {"l: {:?}", l_combined.len()};
+
         //     group by
         //     l_returnflag,
         //     l_linestatus
@@ -675,9 +677,9 @@ mod tests {
         let params_path = "/home/cc/halo2-TPCH/src/sql/param16";
         // let mut fd = std::fs::File::create(&params_path).unwrap();
         // params.write(&mut fd).unwrap();
-        // println!("Time to generate params {:?}", params_time);
+        // println!("Time to generate params {:?}", params_time_start.elapsed());
 
-        // read params16
+        // read params
         let mut fd = std::fs::File::open(&params_path).unwrap();
         let params = ParamsIPA::<vesta::Affine>::read(&mut fd).unwrap();
 
@@ -732,7 +734,7 @@ mod tests {
 
     #[test]
     fn test_1() {
-        let k = 16;
+        let k = 15;
 
         fn string_to_u64(s: &str) -> u64 {
             let mut result = 0;
@@ -756,11 +758,50 @@ mod tests {
                 Err(_) => 0, // Return a default value like 0 in case of an error
             }
         }
-
-        // let lineitem_file_path = "/Users/binbingu/halo2-TPCH/src/data/lineitem.tbl";
-        let lineitem_file_path = "/home/cc/halo2-TPCH/src/data/lineitem.tbl";
         let mut lineitem: Vec<Vec<Fp>> = Vec::new();
 
+        // let lineitem_file_path = "/home/cc/halo2-TPCH/src/data/lineitem.tbl";
+
+        // if let Ok(records) = data_processing::lineitem_read_records_from_file(lineitem_file_path) {
+        //     // Convert the Vec<Region> to a 2D vector
+        //     lineitem = records
+        //         .iter()
+        //         .map(|record| {
+        //             vec![
+        //                 Fp::from(record.l_quantity),
+        //                 Fp::from(scale_by_1000(record.l_extendedprice)),
+        //                 Fp::from(scale_by_1000(record.l_discount)),
+        //                 Fp::from(scale_by_1000(record.l_tax)),
+        //                 Fp::from(string_to_u64(&record.l_returnflag)),
+        //                 Fp::from(string_to_u64(&record.l_linestatus)),
+        //                 Fp::from(date_to_timestamp(&record.l_shipdate)),
+        //                 // Fp::from(string_to_u64(&record.l_shipdate)),
+        //             ]
+        //         })
+        //         .collect();
+        // }
+
+        // let lineitem_file_path = "/home/cc/halo2-TPCH/src/data/lineitem_120K.tbl";
+        // if let Ok(records) = data_processing::lineitem_read_records_from_file(lineitem_file_path) {
+        //     // Convert the Vec<Region> to a 2D vector
+        //     lineitem = records
+        //         .iter()
+        //         .map(|record| {
+        //             vec![
+        //                 Fp::from(record.l_quantity),
+        //                 Fp::from(scale_by_1000(record.l_extendedprice)),
+        //                 Fp::from(scale_by_1000(record.l_discount)),
+        //                 Fp::from(scale_by_1000(record.l_tax)),
+        //                 Fp::from(string_to_u64(&record.l_returnflag)),
+        //                 Fp::from(string_to_u64(&record.l_linestatus)),
+        //                 Fp::from(date_to_timestamp(&record.l_shipdate)),
+        //                 // Fp::from(string_to_u64(&record.l_shipdate)),
+        //             ]
+        //         })
+        //         .collect();
+        // }
+
+        let lineitem_file_path = "/home/cc/halo2-TPCH/src/data/lineitem_240K.tbl";
         if let Ok(records) = data_processing::lineitem_read_records_from_file(lineitem_file_path) {
             // Convert the Vec<Region> to a 2D vector
             lineitem = records
@@ -779,7 +820,6 @@ mod tests {
                 })
                 .collect();
         }
-        // println!("lineitem length: {:?}", lineitem[0]);
 
         let right_shipdate = Fp::from(902102400);
         // l_shipdate <= date '1998-08-03'
@@ -797,14 +837,14 @@ mod tests {
 
         let public_input = vec![Fp::from(1)];
 
-        // let test = true;
-        let test = false;
+        let test = true;
+        // let test = false;
 
         if test {
             let prover = MockProver::run(k, &circuit, vec![public_input]).unwrap();
             prover.assert_satisfied();
         } else {
-            let proof_path = "/home/cc/halo2-TPCH/src/sql/proof_q1";
+            let proof_path = "/home/cc/halo2-TPCH/src/sql/proof_q1_240K";
             generate_and_verify_proof(k, circuit, &public_input, proof_path);
         }
     }
