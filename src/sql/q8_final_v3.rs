@@ -32,6 +32,7 @@ pub struct TestCircuitConfig<F: Field + Ord> {
     q_enable: Vec<Selector>,
     q_sort: Vec<Selector>,
     q_accu: Selector,
+    q_join: Vec<Selector>,
 
     part: Vec<Column<Advice>>,      // p_partkey, p_type
     supplier: Vec<Column<Advice>>,  // s_suppkey, s_nationkey
@@ -61,6 +62,7 @@ pub struct TestCircuitConfig<F: Field + Ord> {
     equal_condition: Vec<IsZeroConfig<F>>,
     compare_condition: Vec<LtEqGenericConfig<F, NUM_BYTES>>,
     lt_compare_condition: Vec<LtConfig<F, NUM_BYTES>>,
+    perm_helper: Vec<Vec<Column<Advice>>>,
 
     instance: Column<Instance>,
     instance_test: Column<Advice>,
@@ -95,6 +97,10 @@ impl<F: Field + Ord> TestChip<F> {
             q_perm.push(meta.selector());
         }
         let q_accu = meta.selector();
+        let mut q_join = Vec::new();
+        for i_ in 0..16 {
+            q_join.push(meta.complex_selector());
+        }
 
         let mut part = Vec::new();
         let mut supplier = Vec::new();
@@ -174,26 +180,35 @@ impl<F: Field + Ord> TestChip<F> {
             is_zero_advice_column.push(meta.advice_column());
         }
 
-        let vectors = [
-            &part,
-            &supplier,
-            &lineitem,
-            &orders,
-            &customer,
-            &nation_n1,
-            &nation_n2,
-            &regions,
-            &condition,
-            &check,
-            &deduplicate,
-            &dedup_sort,
-            &join,
-            &sum_col,
-        ];
-
-        for &element in vectors[3] {
-            meta.enable_equality(element);
+        let mut perm_helper = Vec::new();
+        for l in [5, 2, 2, 4, 2, 2, 2, 3] {
+            let mut col = Vec::new();
+            for _ in 0..l {
+                col.push(meta.advice_column());
+            }
+            perm_helper.push(col.clone());
         }
+
+        // let vectors = [
+        //     &part,
+        //     &supplier,
+        //     &lineitem,
+        //     &orders,
+        //     &customer,
+        //     &nation_n1,
+        //     &nation_n2,
+        //     &regions,
+        //     &condition,
+        //     &check,
+        //     &deduplicate,
+        //     &dedup_sort,
+        //     &join,
+        //     &sum_col,
+        // ];
+
+        // for &element in vectors[3] {
+        //     meta.enable_equality(element);
+        // }
 
         // // Applying meta.enable_equality() to each element of each vector
         // for vec in vectors {
@@ -324,6 +339,64 @@ impl<F: Field + Ord> TestChip<F> {
             });
         }
 
+        // two permutation check: join and disjoin
+        PermAnyChip::configure(
+            meta,
+            q_join[0],
+            q_join[8],
+            lineitem.clone(),
+            perm_helper[0].clone(),
+        );
+        PermAnyChip::configure(
+            meta,
+            q_join[1],
+            q_join[9],
+            part.clone(),
+            perm_helper[1].clone(),
+        );
+        PermAnyChip::configure(
+            meta,
+            q_join[2],
+            q_join[10],
+            supplier.clone(),
+            perm_helper[2].clone(),
+        );
+        PermAnyChip::configure(
+            meta,
+            q_join[3],
+            q_join[11],
+            orders.clone(),
+            perm_helper[3].clone(),
+        );
+        PermAnyChip::configure(
+            meta,
+            q_join[4],
+            q_join[12],
+            customer.clone(),
+            perm_helper[4].clone(),
+        );
+        PermAnyChip::configure(
+            meta,
+            q_join[5],
+            q_join[13],
+            nation_n1.clone(),
+            perm_helper[5].clone(),
+        );
+        PermAnyChip::configure(
+            meta,
+            q_join[6],
+            q_join[14],
+            regions.clone(),
+            perm_helper[6].clone(),
+        );
+        PermAnyChip::configure(
+            meta,
+            q_join[7],
+            q_join[15],
+            nation_n2.clone(),
+            perm_helper[7].clone(),
+        );
+
         // join sort check
         let mut lt_compare_condition = Vec::new();
         for i in 0..7 {
@@ -373,8 +446,8 @@ impl<F: Field + Ord> TestChip<F> {
         TestCircuitConfig {
             q_enable,
             q_accu,
-
             q_sort,
+            q_join,
             part,
             supplier,
             lineitem,
@@ -386,6 +459,7 @@ impl<F: Field + Ord> TestChip<F> {
             condition,
             check,
             groupby,
+            perm_helper,
 
             join_group,
             disjoin_group,
@@ -682,6 +756,10 @@ impl<F: Field + Ord> TestChip<F> {
             |mut region| {
                 for i in 0..part.len() {
                     self.config.q_enable[3].enable(&mut region, i)?;
+                    if p_check[i] == F::from(1) {
+                        self.config.q_join[1].enable(&mut region, i)?;
+                    }
+
                     for j in 0..part[0].len() {
                         region.assign_advice(
                             || "p",
@@ -706,6 +784,7 @@ impl<F: Field + Ord> TestChip<F> {
                     )?;
                 }
                 for i in 0..supplier.len() {
+                    self.config.q_join[2].enable(&mut region, i)?;
                     for j in 0..supplier[0].len() {
                         region.assign_advice(
                             || "s",
@@ -716,6 +795,7 @@ impl<F: Field + Ord> TestChip<F> {
                     }
                 }
                 for i in 0..lineitem.len() {
+                    self.config.q_join[0].enable(&mut region, i)?;
                     for j in 0..lineitem[0].len() {
                         region.assign_advice(
                             || "l",
@@ -728,6 +808,9 @@ impl<F: Field + Ord> TestChip<F> {
                 for i in 0..orders.len() {
                     self.config.q_enable[1].enable(&mut region, i)?;
                     self.config.q_enable[2].enable(&mut region, i)?;
+                    if o1_check[i] == true && o2_check[i] == true {
+                        self.config.q_join[3].enable(&mut region, i)?;
+                    }
 
                     for j in 0..orders[0].len() {
                         region.assign_advice(
@@ -765,6 +848,7 @@ impl<F: Field + Ord> TestChip<F> {
                     )?;
                 }
                 for i in 0..customer.len() {
+                    self.config.q_join[4].enable(&mut region, i)?;
                     for j in 0..customer[0].len() {
                         region.assign_advice(
                             || "c",
@@ -775,6 +859,7 @@ impl<F: Field + Ord> TestChip<F> {
                     }
                 }
                 for i in 0..nation_n1.len() {
+                    self.config.q_join[5].enable(&mut region, i)?;
                     for j in 0..nation_n1[0].len() {
                         region.assign_advice(
                             || "n",
@@ -785,6 +870,7 @@ impl<F: Field + Ord> TestChip<F> {
                     }
                 }
                 for i in 0..nation_n2.len() {
+                    self.config.q_join[7].enable(&mut region, i)?;
                     for j in 0..nation_n2[0].len() {
                         region.assign_advice(
                             || "n",
@@ -795,6 +881,10 @@ impl<F: Field + Ord> TestChip<F> {
                     }
                 }
                 for i in 0..regions.len() {
+                    if r_check[i] == F::from(1) {
+                        self.config.q_join[6].enable(&mut region, i)?;
+                    }
+
                     self.config.q_enable[0].enable(&mut region, i)?;
                     for j in 0..regions[0].len() {
                         region.assign_advice(
@@ -848,6 +938,64 @@ impl<F: Field + Ord> TestChip<F> {
                                 )?;
                             }
                         }
+                    }
+                }
+
+                // assign perm_helper to merge join_value and disjoin_value for permutation
+                for (idx, &k) in [0, 1, 3, 5, 7, 9, 11, 13].iter().enumerate() {
+                    let join_config = &self.config.join_group[k];
+                    let perm_config = &self.config.perm_helper[idx];
+                    // Process join_value[k]
+                    for i in 0..join_value[k].len() {
+                        for j in 0..join_value[k][0].len() {
+                            let cell1 = region
+                                .assign_advice(
+                                    || "join_config",
+                                    join_config[j],
+                                    i,
+                                    || Value::known(F::from(join_value[k][i][j])),
+                                )?
+                                .cell();
+                            let cell2 = region
+                                .assign_advice(
+                                    || "perm_config",
+                                    perm_config[j],
+                                    i,
+                                    || Value::known(F::from(join_value[k][i][j])),
+                                )?
+                                .cell();
+                            // region.constrain_equal(cell1, cell2)?; // copy constraints
+                        }
+                    }
+
+                    let disjoin_config = &self.config.disjoin_group[k];
+                    for i in 0..disjoin_value[k].len() {
+                        for j in 0..disjoin_value[k][i].len() {
+                            let cell1 = region
+                                .assign_advice(
+                                    || "n",
+                                    disjoin_config[j],
+                                    i,
+                                    || Value::known(F::from(disjoin_value[k][i][j])),
+                                )?
+                                .cell();
+
+                            let cell2 = region
+                                .assign_advice(
+                                    || "perm_config",
+                                    perm_config[j],
+                                    i + join_value[k].len(),
+                                    || Value::known(F::from(disjoin_value[k][i][j])),
+                                )?
+                                .cell();
+                            // region.constrain_equal(cell1, cell2)?; // copy constraints
+                        }
+                    }
+                }
+
+                for (idx, &k) in [0, 1, 3, 5, 7, 9, 11, 13].iter().enumerate() {
+                    for i in 0..join_value[k].len() + disjoin_value[k].len() {
+                        self.config.q_join[idx + 8].enable(&mut region, i)?;
                     }
                 }
 
@@ -1144,7 +1292,7 @@ mod tests {
         // Time to generate parameters
         // let params_time_start = Instant::now();
         // let params: ParamsIPA<vesta::Affine> = ParamsIPA::new(k);
-        let params_path = "/home/cc/halo2-TPCH/src/sql/param16";
+        let params_path = "/home/cc/halo2-TPCH/src/sql/param18";
         // let mut fd = std::fs::File::create(&proof_path).unwrap();
         // params.write(&mut fd).unwrap();
         // println!("Time to generate params {:?}", params_time);
@@ -1238,7 +1386,8 @@ mod tests {
 
         let part_file_path = "/home/cc/halo2-TPCH/src/data/part.tbl";
         let supplier_file_path = "/home/cc/halo2-TPCH/src/data/supplier.tbl";
-        let lineitem_file_path = "/home/cc/halo2-TPCH/src/data/lineitem.tbl";
+        // let lineitem_file_path = "/home/cc/halo2-TPCH/src/data/lineitem.tbl";
+        let lineitem_file_path = "/home/cc/halo2-TPCH/src/data/lineitem_240K.tbl";
         let orders_file_path = "/home/cc/halo2-TPCH/src/data/orders.tbl";
         let customer_file_path = "/home/cc/halo2-TPCH/src/data/customer.tbl";
         let nation_n1_file_path = "/home/cc/halo2-TPCH/src/data/nation.tbl";
@@ -1382,7 +1531,7 @@ mod tests {
             let prover = MockProver::run(k, &circuit, vec![public_input]).unwrap();
             prover.assert_satisfied();
         } else {
-            let proof_path = "/home/cc/halo2-TPCH/src/sql/proof_q8";
+            let proof_path = "/home/cc/halo2-TPCH/src/sql/proof_q8_240K";
             generate_and_verify_proof(k, circuit, &public_input, proof_path);
         }
     }

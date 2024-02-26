@@ -44,12 +44,9 @@ pub struct TestCircuitConfig<F: Field + Ord> {
     equal_check: Column<Advice>,
     count_check: Column<Advice>,
 
-    // equal_v0: IsZeroConfig<F>,
-    // equal_v1: IsZeroV1Config<F>,
     equal_v2: IsZeroV2Config<F>,
     compare_condition: Vec<LtEqGenericConfig<F, NUM_BYTES>>,
     compare_v1: LtEqVecConfig<F, NUM_BYTES>,
-
     instance: Column<Instance>,
     instance_test: Column<Advice>,
 }
@@ -108,21 +105,6 @@ impl<F: Field + Ord> TestChip<F> {
             is_zero_vectors.push(meta.advice_column());
         }
 
-        // for i in 0..7 {
-        //     meta.enable_equality(lineitem[i]);
-        //     meta.enable_equality(groupby[i]);
-        // }
-
-        // meta.enable_equality(right_shipdate);
-        // // meta.enable_equality(instance);
-
-        // meta.enable_equality(sum_qty);
-        // meta.enable_equality(sum_base_price);
-        // meta.enable_equality(sum_disc_price);
-        // meta.enable_equality(sum_charge);
-        // meta.enable_equality(sum_discount);
-        // meta.enable_constant(constant);
-
         // constraints for l_shipdate <= date '1998-12-01' - interval ':1' day (3)
 
         let compare_v1 = LtEqVecChip::configure(
@@ -141,18 +123,7 @@ impl<F: Field + Ord> TestChip<F> {
             },
         );
 
-        // groupby and order by l_returnflag, l_linestatus;
-        // let equal_v0 = IsZeroChip::configure(
-        //     meta,
-        //     |meta| meta.query_selector(q_sort[0]),
-        //     |meta| {
-        //         meta.query_advice(groupby[4], Rotation::prev())
-        //             - meta.query_advice(groupby[4], Rotation::cur())
-        //     },
-        //     is_zero_advice_column1,
-        // );
-
-        // l_returnflag[i-1] <= l_returnflag[i]
+        // // l_returnflag[i-1] <= l_returnflag[i]
         let mut compare_condition = Vec::new();
         let config_lt = LtEqGenericChip::configure(
             meta,
@@ -188,8 +159,7 @@ impl<F: Field + Ord> TestChip<F> {
             ]
         });
 
-        // equal_check
-        // this part is expensive and should be optimized
+        // check whether (l_returnflag[i-1], l_linestatus[i-1]) = (l_returnflag[i], l_linestatus[i])
         let equal_v2 = IsZeroV2Chip::configure(
             meta,
             |meta| meta.query_selector(q_sort[0]),
@@ -290,8 +260,7 @@ impl<F: Field + Ord> TestChip<F> {
             lineitem,
             groupby,
             right_shipdate,
-            // equal_v0,
-            // equal_v1,
+
             equal_v2,
             check,
             equal_check,
@@ -299,7 +268,6 @@ impl<F: Field + Ord> TestChip<F> {
             sum_qty,
             compare_condition,
             compare_v1,
-
             sum_base_price,
             sum_disc_price,
             sum_charge,
@@ -317,8 +285,6 @@ impl<F: Field + Ord> TestChip<F> {
         lineitem: Vec<Vec<F>>,
         right_shipdate: F,
     ) -> Result<AssignedCell<F, F>, Error> {
-        // let equal_v0_chip = IsZeroChip::construct(self.config.equal_v0.clone());
-        // let equal_v1_chip = IsZeroV1Chip::construct(self.config.equal_v1.clone());
         let equal_v2_chip = IsZeroV2Chip::construct(self.config.equal_v2.clone());
         let mut compare_chip = Vec::new();
         for i in 0..self.config.compare_condition.len() {
@@ -485,12 +451,6 @@ impl<F: Field + Ord> TestChip<F> {
                                 Value::known(l_combined[i - 1][5] - l_combined[i][5]),
                             ),
                         )?;
-
-                        // equal_v0_chip.assign(
-                        //     &mut region,
-                        //     i,
-                        //     Value::known(l_combined[i - 1][4] - l_combined[i][4]),
-                        // )?;
                     }
                 }
 
@@ -546,8 +506,6 @@ impl<F: Field + Ord> TestChip<F> {
 
                     // assign chip
                 }
-
-                // equal_v1_chip.assign(&mut region, equal_v1_assign.clone())?;
 
                 compare_v1_chip.assign_right_constant(
                     &mut region,
@@ -734,7 +692,7 @@ mod tests {
 
     #[test]
     fn test_1() {
-        let k = 15;
+        let k = 16;
 
         fn string_to_u64(s: &str) -> u64 {
             let mut result = 0;
@@ -760,26 +718,26 @@ mod tests {
         }
         let mut lineitem: Vec<Vec<Fp>> = Vec::new();
 
-        // let lineitem_file_path = "/home/cc/halo2-TPCH/src/data/lineitem.tbl";
+        let lineitem_file_path = "/home/cc/halo2-TPCH/src/data/lineitem.tbl";
 
-        // if let Ok(records) = data_processing::lineitem_read_records_from_file(lineitem_file_path) {
-        //     // Convert the Vec<Region> to a 2D vector
-        //     lineitem = records
-        //         .iter()
-        //         .map(|record| {
-        //             vec![
-        //                 Fp::from(record.l_quantity),
-        //                 Fp::from(scale_by_1000(record.l_extendedprice)),
-        //                 Fp::from(scale_by_1000(record.l_discount)),
-        //                 Fp::from(scale_by_1000(record.l_tax)),
-        //                 Fp::from(string_to_u64(&record.l_returnflag)),
-        //                 Fp::from(string_to_u64(&record.l_linestatus)),
-        //                 Fp::from(date_to_timestamp(&record.l_shipdate)),
-        //                 // Fp::from(string_to_u64(&record.l_shipdate)),
-        //             ]
-        //         })
-        //         .collect();
-        // }
+        if let Ok(records) = data_processing::lineitem_read_records_from_file(lineitem_file_path) {
+            // Convert the Vec<Region> to a 2D vector
+            lineitem = records
+                .iter()
+                .map(|record| {
+                    vec![
+                        Fp::from(record.l_quantity),
+                        Fp::from(scale_by_1000(record.l_extendedprice)),
+                        Fp::from(scale_by_1000(record.l_discount)),
+                        Fp::from(scale_by_1000(record.l_tax)),
+                        Fp::from(string_to_u64(&record.l_returnflag)),
+                        Fp::from(string_to_u64(&record.l_linestatus)),
+                        Fp::from(date_to_timestamp(&record.l_shipdate)),
+                        // Fp::from(string_to_u64(&record.l_shipdate)),
+                    ]
+                })
+                .collect();
+        }
 
         // let lineitem_file_path = "/home/cc/halo2-TPCH/src/data/lineitem_120K.tbl";
         // if let Ok(records) = data_processing::lineitem_read_records_from_file(lineitem_file_path) {
@@ -801,25 +759,25 @@ mod tests {
         //         .collect();
         // }
 
-        let lineitem_file_path = "/home/cc/halo2-TPCH/src/data/lineitem_240K.tbl";
-        if let Ok(records) = data_processing::lineitem_read_records_from_file(lineitem_file_path) {
-            // Convert the Vec<Region> to a 2D vector
-            lineitem = records
-                .iter()
-                .map(|record| {
-                    vec![
-                        Fp::from(record.l_quantity),
-                        Fp::from(scale_by_1000(record.l_extendedprice)),
-                        Fp::from(scale_by_1000(record.l_discount)),
-                        Fp::from(scale_by_1000(record.l_tax)),
-                        Fp::from(string_to_u64(&record.l_returnflag)),
-                        Fp::from(string_to_u64(&record.l_linestatus)),
-                        Fp::from(date_to_timestamp(&record.l_shipdate)),
-                        // Fp::from(string_to_u64(&record.l_shipdate)),
-                    ]
-                })
-                .collect();
-        }
+        // let lineitem_file_path = "/home/cc/halo2-TPCH/src/data/lineitem_240K.tbl";
+        // if let Ok(records) = data_processing::lineitem_read_records_from_file(lineitem_file_path) {
+        //     // Convert the Vec<Region> to a 2D vector
+        //     lineitem = records
+        //         .iter()
+        //         .map(|record| {
+        //             vec![
+        //                 Fp::from(record.l_quantity),
+        //                 Fp::from(scale_by_1000(record.l_extendedprice)),
+        //                 Fp::from(scale_by_1000(record.l_discount)),
+        //                 Fp::from(scale_by_1000(record.l_tax)),
+        //                 Fp::from(string_to_u64(&record.l_returnflag)),
+        //                 Fp::from(string_to_u64(&record.l_linestatus)),
+        //                 Fp::from(date_to_timestamp(&record.l_shipdate)),
+        //                 // Fp::from(string_to_u64(&record.l_shipdate)),
+        //             ]
+        //         })
+        //         .collect();
+        // }
 
         let right_shipdate = Fp::from(902102400);
         // l_shipdate <= date '1998-08-03'
@@ -837,14 +795,14 @@ mod tests {
 
         let public_input = vec![Fp::from(1)];
 
-        let test = true;
-        // let test = false;
+        // let test = true;
+        let test = false;
 
         if test {
             let prover = MockProver::run(k, &circuit, vec![public_input]).unwrap();
             prover.assert_satisfied();
         } else {
-            let proof_path = "/home/cc/halo2-TPCH/src/sql/proof_q1_240K";
+            let proof_path = "/home/cc/halo2-TPCH/src/sql/proof_q1";
             generate_and_verify_proof(k, circuit, &public_input, proof_path);
         }
     }

@@ -15,6 +15,7 @@ use crate::chips::is_zero_v2::{IsZeroV2Chip, IsZeroV2Config};
 use halo2_proofs::{circuit::*, plonk::*, poly::Rotation};
 use itertools::iproduct;
 use std::cmp::Ordering;
+use std::cmp::Reverse;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::time::Instant;
@@ -30,10 +31,9 @@ impl<F> Field for F where F: PrimeField<Repr = [u8; 32]> {}
 pub struct TestCircuitConfig<F: Field + Ord> {
     q_enable: Vec<Selector>,
 
-    q_perm: Vec<Selector>,
-
     q_sort: Vec<Selector>,
     q_accu: Selector,
+    q_join: Vec<Selector>,
 
     customer: Vec<Column<Advice>>, //  c_custkey, c_nationkey
     orders: Vec<Column<Advice>>,   // o_orderdate, o_custkey, o_orderkey
@@ -55,6 +55,7 @@ pub struct TestCircuitConfig<F: Field + Ord> {
 
     groupby: Vec<Column<Advice>>,
     orderby: Vec<Column<Advice>>,
+    perm_helper: Vec<Vec<Column<Advice>>>,
 
     equal_check: Column<Advice>, // check if sorted_revenue[i-1] = sorted_revenue[i]
     revenue: Column<Advice>,
@@ -104,12 +105,12 @@ impl<F: Field + Ord> TestChip<F> {
             q_sort.push(meta.selector());
         }
 
-        let mut q_perm = Vec::new();
-        for i_ in 0..1 {
-            q_perm.push(meta.selector());
-        }
-
         let q_accu = meta.selector();
+
+        let mut q_join = Vec::new();
+        for i_ in 0..12 {
+            q_join.push(meta.complex_selector());
+        }
 
         let mut customer = Vec::new();
         let mut orders = Vec::new();
@@ -149,6 +150,15 @@ impl<F: Field + Ord> TestChip<F> {
             disjoin_group.push(col.clone());
         }
 
+        let mut perm_helper = Vec::new();
+        for l in [3, 2, 4, 2, 3, 2] {
+            let mut col = Vec::new();
+            for _ in 0..l {
+                col.push(meta.advice_column());
+            }
+            perm_helper.push(col.clone());
+        }
+
         let mut deduplicate = Vec::new();
         let mut dedup_sort = Vec::new();
         let mut condition = Vec::new();
@@ -185,45 +195,6 @@ impl<F: Field + Ord> TestChip<F> {
         for _ in 0..3 {
             check.push(meta.advice_column());
         }
-        // equality
-        // For 'customer', 'supplier', 'regions', 'dedup_sort', 'is_zero_advice_column'
-        // for vec in [
-        //     &customer,
-        //     &supplier,
-        //     &regions,
-        //     &dedup_sort,
-        //     &is_zero_advice_column,
-        // ] {
-        //     for &element in vec.iter() {
-        //         meta.enable_equality(element);
-        //     }
-        // }
-
-        // // For 'orders', 'nation', 'condition', 'join', 'groupby', 'check'
-        // for vec in [&orders, &nation, &condition, &join, &groupby, &check] {
-        //     for &element in vec.iter() {
-        //         meta.enable_equality(element);
-        //     }
-        // }
-
-        // // For 'lineitem'
-        // for &element in lineitem.iter() {
-        //     meta.enable_equality(element);
-        // }
-
-        // // For 'deduplicate'
-        // for &element in deduplicate.iter() {
-        //     meta.enable_equality(element);
-        // }
-
-        // // For 'orderby'
-        // for &element in orderby.iter() {
-        //     meta.enable_equality(element);
-        // }
-
-        // // For 'equal_check' and 'revenue'
-        // meta.enable_equality(equal_check);
-        // meta.enable_equality(revenue);
 
         // r_name = ':1'
         let mut equal_condition = Vec::new();
@@ -247,13 +218,14 @@ impl<F: Field + Ord> TestChip<F> {
             ]
         });
 
-        // o_orderdate >= date ':2'
         let mut compare_condition = Vec::new();
-        let config: LtEqGenericConfig<F, NUM_BYTES> = LtEqGenericChip::configure(
+
+        // o_orderdate >= date ':2'
+        let config = LtEqGenericChip::configure(
             meta,
             |meta| meta.query_selector(q_enable[1]),
             |meta| vec![meta.query_advice(condition[1], Rotation::cur())],
-            |meta| vec![meta.query_advice(orders[0], Rotation::cur())],
+            |meta| vec![meta.query_advice(orders[0], Rotation::cur())], // we put the left and right value at the first two positions of value_l
         );
         meta.create_gate(
             "verifies o_orderdate >= date ':2'", // just use less_than for testing here
@@ -269,14 +241,14 @@ impl<F: Field + Ord> TestChip<F> {
         // o_orderdate < date ':2' + interval '1' year
         let config = LtChip::configure(
             meta,
-            |meta| meta.query_selector(q_enable[2]),
+            |meta| meta.query_selector(q_enable[1]),
             |meta| meta.query_advice(orders[0], Rotation::cur()),
             |meta| meta.query_advice(condition[2], Rotation::cur()), // we put the left and right value at the first two positions of value_l
         );
         meta.create_gate(
             "verifies o_orderdate < date ':2' + interval '1' year", // just use less_than for testing here
             |meta| {
-                let q_enable = meta.query_selector(q_enable[2]);
+                let q_enable = meta.query_selector(q_enable[1]);
                 let check = meta.query_advice(check[2], Rotation::cur());
                 vec![q_enable * (config.clone().is_lt(meta, None) - check)]
             },
@@ -317,6 +289,50 @@ impl<F: Field + Ord> TestChip<F> {
                 vec![(input1, table1), (input2, table2)]
             });
         }
+
+        // two permutation check: join and disjoin
+        PermAnyChip::configure(
+            meta,
+            q_join[0],
+            q_join[6],
+            orders.clone(),
+            perm_helper[0].clone(),
+        );
+        PermAnyChip::configure(
+            meta,
+            q_join[1],
+            q_join[7],
+            customer.clone(),
+            perm_helper[1].clone(),
+        );
+        PermAnyChip::configure(
+            meta,
+            q_join[2],
+            q_join[8],
+            lineitem.clone(),
+            perm_helper[2].clone(),
+        );
+        PermAnyChip::configure(
+            meta,
+            q_join[3],
+            q_join[9],
+            supplier.clone(),
+            perm_helper[3].clone(),
+        );
+        PermAnyChip::configure(
+            meta,
+            q_join[4],
+            q_join[10],
+            nation.clone(),
+            perm_helper[4].clone(),
+        );
+        PermAnyChip::configure(
+            meta,
+            q_join[5],
+            q_join[11],
+            regions.clone(),
+            perm_helper[5].clone(),
+        );
 
         // join sort check
         for i in 0..4 {
@@ -363,7 +379,7 @@ impl<F: Field + Ord> TestChip<F> {
         });
 
         // orderby
-        // (1) revenue[i-1] > revenue[i]
+        // (1) revenue[i-1] >= revenue[i]
         let config = LtEqGenericChip::configure(
             meta,
             |meta| meta.query_selector(q_sort[5]), // q_sort[1] should start from index 1
@@ -373,17 +389,16 @@ impl<F: Field + Ord> TestChip<F> {
         compare_condition.push(config.clone());
 
         meta.create_gate("verifies orderby scenarios", |meta| {
-            let q_sort = meta.query_selector(q_sort[6]);
+            let q_sort = meta.query_selector(q_sort[5]);
 
             vec![q_sort.clone() * (config.is_lt(meta, None) - Expression::Constant(F::ONE))]
         });
 
         TestCircuitConfig {
             q_enable,
-
-            q_perm,
             q_sort,
             q_accu,
+            q_join,
 
             customer,
             orders,
@@ -402,6 +417,7 @@ impl<F: Field + Ord> TestChip<F> {
 
             groupby,
             orderby,
+            perm_helper,
             equal_check,
 
             revenue,
@@ -458,10 +474,9 @@ impl<F: Field + Ord> TestChip<F> {
         let mut o1_check = Vec::new(); // t/f
         let mut o2_check = Vec::new(); // 0, 1
 
-        // let mut orders_orderdate = Vec::new();
+        // 0 <= o_orderdate < date_to_timestamp("1998-01-01") - date_to_timestamp("1997-01-01")
 
         for i in 0..orders.len() {
-            // orders_orderdate.push(F::from(orders[i][0]));
             if orders[i][0] >= condition[1] {
                 o1_check.push(true);
             } else {
@@ -489,6 +504,7 @@ impl<F: Field + Ord> TestChip<F> {
             .filter(|row| row[0] >= condition[1] && row[0] < condition[2]) // r_name = ':3'
             .collect();
 
+        println!("Orders: {:?}", o_combined.len());
         let mut r_combined: Vec<Vec<_>> = regions
             .clone()
             .into_iter()
@@ -514,14 +530,6 @@ impl<F: Field + Ord> TestChip<F> {
         // nation: Vec<Column<Advice>>,   // n_nationkey, n_regionkey, n_name
         // regions: Vec<Column<Advice>>,  // r_regionkey, r_name
 
-        let index = [
-            (0, 1, 1, 0), //   c_custkey = o_custkey
-            (1, 2, 2, 0), //   l_orderkey = o_orderkey
-            (2, 3, 3, 1), // l_suppkey = s_suppkey
-            (0, 3, 1, 0), // c_nationkey = s_nationkey
-            (3, 4, 0, 0), // s_nationkey = n_nationkey
-            (4, 5, 1, 0), // n_regionkey = r_regionkey
-        ];
         // note that the second table has the primary key to be joined in the following steps
         // orders, customer,     join step 1
         // lineitem, join(orders, customer) i.e. previous join,  join step 2
@@ -567,6 +575,7 @@ impl<F: Field + Ord> TestChip<F> {
             }
         }
         let temp_join = to_add;
+        println!("Join 1: {:?}", temp_join.len());
 
         // join step 2
         map.clear();
@@ -595,7 +604,7 @@ impl<F: Field + Ord> TestChip<F> {
         let mut to_add = Vec::new();
         for ab in combined[2].iter() {
             for c in temp_join.iter() {
-                if ab[2] == c[0] {
+                if ab[0] == c[2] {
                     let mut joined = ab.to_vec();
                     joined.extend_from_slice(c);
                     to_add.push(joined);
@@ -603,6 +612,7 @@ impl<F: Field + Ord> TestChip<F> {
             }
         }
         let temp_join = to_add;
+        println!("Join 2: {:?}", temp_join.len());
 
         // join step 3
         map.clear();
@@ -643,6 +653,7 @@ impl<F: Field + Ord> TestChip<F> {
             }
         }
         let temp_join = to_add;
+        println!("Join 3: {:?}", temp_join.len());
 
         // join step 4
         map.clear();
@@ -679,6 +690,7 @@ impl<F: Field + Ord> TestChip<F> {
             }
         }
         let temp_join = to_add;
+        println!("Join 4: {:?}", temp_join.len());
 
         // join step 5
         map.clear();
@@ -716,24 +728,8 @@ impl<F: Field + Ord> TestChip<F> {
         }
 
         let mut cartesian_product = to_add;
+        println!("Join 5: {:?}", temp_join.len());
 
-        // enum Element {
-        //     Single(u64),
-        //     Pair(u64, u64),
-        // }
-
-        // let dis_value_index: Vec<Element> = vec![
-        //     Element::Single(1),
-        //     Element::Single(0),
-        //     Element::Single(0),
-        //     Element::Single(2),
-        //     Element::Pair(3, 8),
-        //     Element::Pair(1, 0),
-        //     Element::Single(9),
-        //     Element::Single(0),
-        //     Element::Single(12),
-        //     Element::Single(5),
-        // ];
         let index1 = [1, 0, 0, 2, 9, 0, 12, 0];
         let index2 = [(3, 8), (1, 0)];
         let indices1 = [0, 1, 2, 3];
@@ -807,7 +803,7 @@ impl<F: Field + Ord> TestChip<F> {
         concatenated_tuple.sort_by_key(|element| element.0 + element.1);
 
         // group by n_name
-        cartesian_product.sort_by_key(|element| element[13].clone());
+        cartesian_product.sort_by_key(|element| element[13]);
 
         let mut equal_check: Vec<F> = Vec::new();
         if cartesian_product.len() > 0 {
@@ -844,16 +840,15 @@ impl<F: Field + Ord> TestChip<F> {
                 }
             }
         }
-        // println!("cartesian {:?}", cartesian_product);
-        // println!("grouped data {:?}", grouped_data);
 
-        grouped_data.sort_by_key(|element| element[1].clone());
+        grouped_data.sort_by_key(|element| Reverse(element[1].clone()));
 
         layouter.assign_region(
             || "witness",
             |mut region| {
                 //assign input values
                 for i in 0..customer.len() {
+                    self.config.q_join[1].enable(&mut region, i)?;
                     for j in 0..customer[0].len() {
                         region.assign_advice(
                             || "customer",
@@ -866,7 +861,9 @@ impl<F: Field + Ord> TestChip<F> {
 
                 for i in 0..orders.len() {
                     self.config.q_enable[1].enable(&mut region, i)?;
-                    self.config.q_enable[2].enable(&mut region, i)?;
+                    if o1_check[i] == true && o2_check[i] == true {
+                        self.config.q_join[0].enable(&mut region, i)?;
+                    }
                     for j in 0..orders[0].len() {
                         region.assign_advice(
                             || "orders",
@@ -883,7 +880,7 @@ impl<F: Field + Ord> TestChip<F> {
                         || Value::known(F::from(o1_check[i] as u64)),
                     )?;
                     region.assign_advice(
-                        || "check1",
+                        || "check2",
                         self.config.check[2],
                         i,
                         || Value::known(F::from(o2_check[i] as u64)),
@@ -903,6 +900,7 @@ impl<F: Field + Ord> TestChip<F> {
                     )?;
                 }
                 for i in 0..lineitem.len() {
+                    self.config.q_join[2].enable(&mut region, i)?;
                     for j in 0..lineitem[0].len() {
                         region.assign_advice(
                             || "l",
@@ -914,6 +912,7 @@ impl<F: Field + Ord> TestChip<F> {
                 }
 
                 for i in 0..supplier.len() {
+                    self.config.q_join[3].enable(&mut region, i)?;
                     for j in 0..supplier[0].len() {
                         region.assign_advice(
                             || "l",
@@ -925,6 +924,7 @@ impl<F: Field + Ord> TestChip<F> {
                 }
 
                 for i in 0..nation.len() {
+                    self.config.q_join[4].enable(&mut region, i)?;
                     for j in 0..nation[0].len() {
                         region.assign_advice(
                             || "l",
@@ -937,9 +937,13 @@ impl<F: Field + Ord> TestChip<F> {
 
                 for i in 0..regions.len() {
                     self.config.q_enable[0].enable(&mut region, i)?;
+                    if r_check[i] == F::from(1) {
+                        self.config.q_join[5].enable(&mut region, i)?;
+                    }
+
                     for j in 0..regions[0].len() {
                         region.assign_advice(
-                            || "customer",
+                            || "r",
                             self.config.regions[j],
                             i,
                             || Value::known(F::from(regions[i][j])),
@@ -1016,8 +1020,62 @@ impl<F: Field + Ord> TestChip<F> {
                     }
                 }
 
-                for row in 1..cartesian_product.len() {
-                    self.config.q_sort[6].enable(&mut region, row)?; // q_sort[2]
+                // assign perm_helper to merge join_value and disjoin_value for permutation
+                for (idx, &k) in [0, 1, 2, 5, 7, 9].iter().enumerate() {
+                    let join_config = &self.config.join_group[k];
+                    let perm_config = &self.config.perm_helper[idx];
+                    // Process join_value[k]
+                    for i in 0..join_value[k].len() {
+                        for j in 0..join_value[k][0].len() {
+                            let cell1 = region
+                                .assign_advice(
+                                    || "join_config",
+                                    join_config[j],
+                                    i,
+                                    || Value::known(F::from(join_value[k][i][j])),
+                                )?
+                                .cell();
+                            let cell2 = region
+                                .assign_advice(
+                                    || "perm_config",
+                                    perm_config[j],
+                                    i,
+                                    || Value::known(F::from(join_value[k][i][j])),
+                                )?
+                                .cell();
+                            // region.constrain_equal(cell1, cell2)?; // copy constraints
+                        }
+                    }
+
+                    let disjoin_config = &self.config.disjoin_group[k];
+                    for i in 0..disjoin_value[k].len() {
+                        for j in 0..disjoin_value[k][i].len() {
+                            let cell1 = region
+                                .assign_advice(
+                                    || "n",
+                                    disjoin_config[j],
+                                    i,
+                                    || Value::known(F::from(disjoin_value[k][i][j])),
+                                )?
+                                .cell();
+
+                            let cell2 = region
+                                .assign_advice(
+                                    || "perm_config",
+                                    perm_config[j],
+                                    i + join_value[k].len(),
+                                    || Value::known(F::from(disjoin_value[k][i][j])),
+                                )?
+                                .cell();
+                            // region.constrain_equal(cell1, cell2)?; // copy constraints
+                        }
+                    }
+                }
+
+                for (idx, &k) in [0, 1, 2, 5, 7, 9].iter().enumerate() {
+                    for i in 0..join_value[k].len() + disjoin_value[k].len() {
+                        self.config.q_join[idx + 6].enable(&mut region, i)?;
+                    }
                 }
 
                 // dedup
@@ -1112,8 +1170,25 @@ impl<F: Field + Ord> TestChip<F> {
                     )?;
                 }
 
+                // assign chips
+                for i in 0..orders.len() {
+                    compare_chip[0].assign(
+                        &mut region,
+                        i,
+                        &[F::from(condition[1])],
+                        &[F::from(orders[i][0])],
+                    )?;
+
+                    lt_compare_chip[0].assign(
+                        &mut region,
+                        i,
+                        Value::known(F::from(orders[i][0])),
+                        Value::known(F::from(condition[2])),
+                    )?;
+                }
+
                 for i in 0..cartesian_product.len() {
-                    self.config.q_perm[0].enable(&mut region, i)?; // q_perm[0]
+                    // self.config.q_perm[0].enable(&mut region, i)?; // q_perm[0]
                     for (idx, &j) in [13, 1, 2].iter().enumerate() {
                         region.assign_advice(
                             || "groupby",
@@ -1154,21 +1229,6 @@ impl<F: Field + Ord> TestChip<F> {
                             || Value::known(grouped_data[i][j]),
                         )?;
                     }
-                }
-                // assign chips
-                for i in 0..orders.len() {
-                    compare_chip[0].assign(
-                        &mut region,
-                        i,
-                        &[F::from(condition[1])],
-                        &[F::from(orders[i][0])],
-                    )?;
-                    lt_compare_chip[0].assign(
-                        &mut region,
-                        i,
-                        Value::known(F::from(orders[i][0])),
-                        Value::known(F::from(condition[2])),
-                    )?;
                 }
 
                 for i in 0..concatenated_vectors.len() {
@@ -1315,7 +1375,7 @@ mod tests {
         // Time to generate parameters
         // let params_time_start = Instant::now();
         // let params: ParamsIPA<vesta::Affine> = ParamsIPA::new(k);
-        let params_path = "/home/cc/halo2-TPCH/src/sql/param16";
+        let params_path = "/home/cc/halo2-TPCH/src/sql/param18";
         // let mut fd = std::fs::File::create(&proof_path).unwrap();
         // params.write(&mut fd).unwrap();
         // println!("Time to generate params {:?}", params_time);
@@ -1409,7 +1469,8 @@ mod tests {
 
         let customer_file_path = "/home/cc/halo2-TPCH/src/data/customer.tbl";
         let orders_file_path = "/home/cc/halo2-TPCH/src/data/orders.tbl";
-        let lineitem_file_path = "/home/cc/halo2-TPCH/src/data/lineitem.tbl";
+        // let lineitem_file_path = "/home/cc/halo2-TPCH/src/data/lineitem.tbl";
+        let lineitem_file_path = "/home/cc/halo2-TPCH/src/data/lineitem_240K.tbl";
         let supplier_file_path = "/home/cc/halo2-TPCH/src/data/supplier.tbl";
         let nation_file_path = "/home/cc/halo2-TPCH/src/data/nation.tbl";
         let region_file_path = "/home/cc/halo2-TPCH/src/data/region.cvs";
@@ -1492,44 +1553,6 @@ mod tests {
         // 1997-01-01 -> 852076800
         // 1998-01-01 -> 883612800
 
-        // 1991-01-01 -> 662688000 just for testing
-        //
-        // for i in 0..customer.len(){
-        //     for j in 0..orders.len(){
-        //         if customer[i][0] == orders[j][1]{
-        //             println!("customer: {:?}", customer[i][0]);
-        //             break;
-        //         }
-
-        //     }
-        // }
-
-        // let customer: Vec<Vec<u64>> = customer.iter().take(100).cloned().collect();
-        // let orders: Vec<Vec<u64>> = orders.iter().take(100).cloned().collect();
-        // let lineitem: Vec<Vec<u64>> = lineitem.iter().take(100).cloned().collect();
-        // let supplier: Vec<Vec<u64>> = supplier.iter().take(100).cloned().collect();
-        // // let nation: Vec<Vec<Fp>> = nation.iter().take(3).cloned().collect();
-        // // let region: Vec<Vec<Fp>> = region.iter().take(3).cloned().collect();
-
-        // let lineitem: Vec<Vec<Fp>> = vec![
-        //     vec![Fp::from(4), Fp::from(2), Fp::from(1), Fp::from(11)],
-        //     vec![Fp::from(1), Fp::from(2), Fp::from(1), Fp::from(12)],
-        //     vec![Fp::from(1), Fp::from(2), Fp::from(1), Fp::from(13)],
-        // ];
-
-        // let supplier: Vec<Vec<Fp>> = vec![
-        //     vec![Fp::from(1), Fp::from(2)],
-        //     vec![Fp::from(1), Fp::from(3)],
-        //     vec![Fp::from(1), Fp::from(4)],
-        // ];
-
-        // let nation: Vec<Vec<Fp>> = vec![
-        //     vec![Fp::from(1), Fp::from(2), Fp::from(1)],
-        //     vec![Fp::from(1), Fp::from(2), Fp::from(2)],
-        //     vec![Fp::from(1), Fp::from(2), Fp::from(6)],
-        // ];
-        // let condition = vec![Fp::from(1615), Fp::from(852076800), Fp::from(883612800)];
-
         let circuit = MyCircuit::<Fp> {
             customer,
             orders,
@@ -1550,7 +1573,7 @@ mod tests {
             let prover = MockProver::run(k, &circuit, vec![public_input]).unwrap();
             prover.assert_satisfied();
         } else {
-            let proof_path = "/home/cc/halo2-TPCH/src/sql/proof_q5";
+            let proof_path = "/home/cc/halo2-TPCH/src/sql/proof_q5_240K";
             generate_and_verify_proof(k, circuit, &public_input, proof_path);
         }
     }

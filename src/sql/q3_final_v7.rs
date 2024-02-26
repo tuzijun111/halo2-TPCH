@@ -23,14 +23,13 @@ use std::mem;
 use std::process;
 use std::time::Instant;
 
-const NUM_BYTES: usize = 4;
+const NUM_BYTES: usize = 5;
 
 pub trait Field: PrimeField<Repr = [u8; 32]> {}
 
 impl<F> Field for F where F: PrimeField<Repr = [u8; 32]> {}
 
 // #[derive(Default)]
-// We should use the selector to skip the row which does not satisfy shipdate values
 
 #[derive(Clone, Debug)]
 pub struct TestCircuitConfig<F: Field + Ord> {
@@ -96,12 +95,12 @@ impl<F: Field + Ord> TestChip<F> {
         // meta.enable_equality(instance_test2);
 
         let mut q_enable = Vec::new();
-        for i_ in 0..4 {
+        for _ in 0..4 {
             q_enable.push(meta.selector());
         }
 
         let mut q_sort = Vec::new();
-        for i_ in 0..4 {
+        for _ in 0..4 {
             q_sort.push(meta.selector());
         }
 
@@ -113,7 +112,7 @@ impl<F: Field + Ord> TestChip<F> {
                 q_join.push(meta.complex_selector());
             }
         }
-        for i_ in 0..5 {
+        for _ in 0..5 {
             q_sort.push(meta.selector());
         }
 
@@ -131,7 +130,7 @@ impl<F: Field + Ord> TestChip<F> {
             lineitem.push(meta.advice_column());
         }
         let mut lineitem_old = Vec::new();
-        for i in 0..2 {
+        for _ in 0..2 {
             let mut col = Vec::new();
             for _ in 0..4 {
                 col.push(meta.advice_column());
@@ -213,31 +212,6 @@ impl<F: Field + Ord> TestChip<F> {
         for _ in 0..4 {
             check.push(meta.advice_column());
         }
-        // // equality
-        // for i in 0..2 {
-        //     meta.enable_equality(deduplicate_helper[i]);
-        //     meta.enable_equality(dedup_sort[i]);
-        // }
-        // for i in 0..4 {
-        //     // meta.enable_equality(deduplicate[i]);
-        //     meta.enable_equality(orderby[i]);
-        // }
-
-        // the following two parts are also expensive and should be optimized
-        // for vec in join_group.iter().chain(disjoin_group.iter()) {
-        //     for &element in vec.iter() {
-        //         meta.enable_equality(element);
-        //     }
-        // }
-
-        // for vec in perm_helper.iter() {
-        //     for &element in vec.iter() {
-        //         meta.enable_equality(element);
-        //     }
-        // }
-
-        // meta.enable_equality(equal_check);
-        // meta.enable_equality(revenue);
 
         // // c_mktsegment = ':1'
         let mut equal_condition = Vec::new();
@@ -339,7 +313,6 @@ impl<F: Field + Ord> TestChip<F> {
         }
 
         // two permutation check: join and disjoin
-
         PermAnyChip::configure(
             meta,
             q_join[2],
@@ -347,6 +320,7 @@ impl<F: Field + Ord> TestChip<F> {
             orders.clone(),
             perm_helper[0].clone(),
         );
+
         PermAnyChip::configure(
             meta,
             q_join[3],
@@ -364,12 +338,12 @@ impl<F: Field + Ord> TestChip<F> {
         );
 
         // two dedup permutation check: deduplicate and dedup_sort
-        meta.lookup_any("dedup permtuation check", |meta| {
+        meta.lookup_any("dedup permutation check", |meta| {
             let input = meta.query_advice(deduplicate_helper[0], Rotation::cur());
             let table = meta.query_advice(dedup_sort[0], Rotation::cur());
             vec![(input, table)]
         });
-        meta.lookup_any("dedup permtuation check", |meta| {
+        meta.lookup_any("dedup permutation check", |meta| {
             let input = meta.query_advice(deduplicate_helper[1], Rotation::cur());
             let table = meta.query_advice(dedup_sort[1], Rotation::cur());
             vec![(input, table)]
@@ -417,6 +391,7 @@ impl<F: Field + Ord> TestChip<F> {
                 vec![q * (p1 - p2)]
             },
         );
+
         meta.lookup_any("check join2", |meta| {
             let inputs: Vec<_> = join2
                 .iter()
@@ -452,90 +427,87 @@ impl<F: Field + Ord> TestChip<F> {
             });
         }
 
-        // // join check
-
         // // group by
         let mut compare_condition = Vec::new();
-        // let config = LtEqVecChip::configure(
-        //     meta,
-        //     |meta| meta.query_selector(q_sort[2]),
-        //     |meta| {
-        //         vec![
-        //             meta.query_advice(groupby[0], Rotation::cur()),
-        //             meta.query_advice(groupby[1], Rotation::cur()),
-        //             meta.query_advice(groupby[2], Rotation::cur()),
-        //         ]
-        //     },
-        //     |meta| {
-        //         vec![
-        //             meta.query_advice(groupby[0], Rotation::next()),
-        //             meta.query_advice(groupby[1], Rotation::next()),
-        //             meta.query_advice(groupby[2], Rotation::next()),
-        //         ]
-        //     },
-        // );
-        // compare_condition.push(config);
+        let config = LtEqGenericChip::configure(
+            meta,
+            |meta| meta.query_selector(q_sort[2]),
+            |meta| {
+                vec![
+                    meta.query_advice(groupby[0], Rotation::prev()),
+                    meta.query_advice(groupby[1], Rotation::prev()),
+                    meta.query_advice(groupby[2], Rotation::prev()),
+                ]
+            },
+            |meta| {
+                vec![
+                    meta.query_advice(groupby[0], Rotation::cur()),
+                    meta.query_advice(groupby[1], Rotation::cur()),
+                    meta.query_advice(groupby[2], Rotation::cur()),
+                ]
+            },
+        );
+        compare_condition.push(config);
 
-        // sum gate: sum(l_extendedprice * (1 - l_discount)) as revenue, note that revenue column starts by zero and its length is 1 more than others
-        meta.create_gate("accumulate constraint", |meta| {
-            let q_accu = meta.query_selector(q_accu);
-            let prev_revenue = meta.query_advice(revenue.clone(), Rotation::cur());
-            let extendedprice = meta.query_advice(groupby[3], Rotation::cur());
-            let discount = meta.query_advice(groupby[4], Rotation::cur());
-            let sum_revenue = meta.query_advice(revenue, Rotation::next());
-            let check = meta.query_advice(equal_check, Rotation::cur());
-
-            vec![
-                q_accu.clone()
-                    * (check.clone() * prev_revenue
-                        + extendedprice.clone()
-                            * (Expression::Constant(F::from(1000)) - discount.clone())
-                        - sum_revenue),
-            ]
-        });
-
-        // orderby
-
-        // // (1) revenue[i-1] > revenue[i]
-        // let config = LtEqVecChip::configure(
-        //     meta,
-        //     |meta| meta.query_selector(q_sort[3]), // q_sort[1] should start from index 1
-        //     |meta| vec![meta.query_advice(orderby[3], Rotation::next())], // revenue
-        //     |meta| vec![meta.query_advice(orderby[3], Rotation::cur())],
-        // );
-        // compare_condition.push(config.clone());
-
-        // // revenue[i-1] = revenue[i]
-        // let equal_v1 = IsZeroChip::configure(
-        //     meta,
-        //     |meta| meta.query_selector(q_sort[3]),
-        //     |meta| {
-        //         meta.query_advice(orderby[3], Rotation::cur())
-        //             - meta.query_advice(orderby[3], Rotation::next())
-        //     },
-        //     is_zero_advice_column[1],
-        // );
-        // equal_condition.push(equal_v1.clone());
-
-        // // o_orderdate[i-1] <= o_orderdate[i]
-        // let config_lt = LtEqVecChip::configure(
-        //     meta,
-        //     |meta| meta.query_selector(q_sort[3]), // q_sort[2] should start from index 1
-        //     |meta| vec![meta.query_advice(orderby[0], Rotation::cur())],
-        //     |meta| vec![meta.query_advice(orderby[0], Rotation::next())],
-        // );
-        // compare_condition.push(config_lt.clone());
-
-        // meta.create_gate("verifies orderby scenarios", |meta| {
-        //     let q_sort = meta.query_selector(q_sort[3]);
+        // // sum gate: sum(l_extendedprice * (1 - l_discount)) as revenue, note that revenue column starts by zero and its length is 1 more than others
+        // meta.create_gate("accumulate constraint", |meta| {
+        //     let q_accu = meta.query_selector(q_accu);
+        //     let prev_revenue = meta.query_advice(revenue.clone(), Rotation::cur());
+        //     let extendedprice = meta.query_advice(groupby[3], Rotation::cur());
+        //     let discount = meta.query_advice(groupby[4], Rotation::cur());
+        //     let sum_revenue = meta.query_advice(revenue, Rotation::next());
+        //     let check = meta.query_advice(equal_check, Rotation::cur());
 
         //     vec![
-        //         q_sort.clone() *
-        //         (config.is_lt(meta, None) - Expression::Constant(F::ONE)) // or
-        //                 * (equal_v1.expr() * config_lt.is_lt(meta, None)
-        //                     - Expression::Constant(F::ONE)),
+        //         q_accu.clone()
+        //             * (check.clone() * prev_revenue
+        //                 + extendedprice.clone()
+        //                     * (Expression::Constant(F::from(1000)) - discount.clone())
+        //                 - sum_revenue),
         //     ]
         // });
+
+        // orderby
+        // (1) revenue[i-1] >= revenue[i]
+        let config = LtEqGenericChip::configure(
+            meta,
+            |meta| meta.query_selector(q_sort[3]), // q_sort[1] should start from index 1
+            |meta| vec![meta.query_advice(orderby[3], Rotation::cur())], // revenue
+            |meta| vec![meta.query_advice(orderby[3], Rotation::prev())],
+        );
+        compare_condition.push(config.clone());
+
+        // revenue[i-1] = revenue[i]
+        let equal_v1 = IsZeroChip::configure(
+            meta,
+            |meta| meta.query_selector(q_sort[3]),
+            |meta| {
+                meta.query_advice(orderby[3], Rotation::prev())
+                    - meta.query_advice(orderby[3], Rotation::cur())
+            },
+            is_zero_advice_column[1],
+        );
+        equal_condition.push(equal_v1.clone());
+
+        // o_orderdate[i-1] <= o_orderdate[i]
+        let config_lt = LtEqGenericChip::configure(
+            meta,
+            |meta| meta.query_selector(q_sort[3]), // q_sort[2] should start from index 1
+            |meta| vec![meta.query_advice(orderby[0], Rotation::prev())],
+            |meta| vec![meta.query_advice(orderby[0], Rotation::cur())],
+        );
+        compare_condition.push(config_lt.clone());
+
+        meta.create_gate("verifies orderby scenarios", |meta| {
+            let q_sort = meta.query_selector(q_sort[3]);
+
+            vec![
+                q_sort.clone() *
+                (config.is_lt(meta, None) - Expression::Constant(F::ONE)) // or
+                        * (equal_v1.expr() * config_lt.is_lt(meta, None)
+                            - Expression::Constant(F::ONE)),
+            ]
+        });
 
         TestCircuitConfig {
             q_enable,
@@ -646,15 +618,6 @@ impl<F: Field + Ord> TestChip<F> {
                 }
             }
         }
-
-        // compute values related to the join operation locally
-        // store the attribtues of the tables that will be used in the SQL query in tuples
-        // let mut c_combined = customer.clone();
-        // let mut o_combined = orders.clone();
-        // let mut l_combined = lineitem.clone();
-
-        let duration_block = start.elapsed();
-        println!("Time elapsed for block: {:?}", duration_block);
 
         let c_combined: Vec<Vec<_>> = customer
             .clone()
@@ -771,6 +734,12 @@ impl<F: Field + Ord> TestChip<F> {
                 disjoin_value[3].push(val); // disjoin values
             }
         }
+        // orders +  customer + lineitem
+
+        // join 0: orders
+        // join 1: customer
+        // join 2: lineitem
+        // join 3: orders+ customer
 
         // locally compute the second join
         let mut to_add = Vec::new();
@@ -847,7 +816,6 @@ impl<F: Field + Ord> TestChip<F> {
         }
 
         let duration_block = start.elapsed();
-        println!("Time elapsed for block: {:?}", duration_block);
 
         // order by
         // revenue desc,
@@ -869,12 +837,14 @@ impl<F: Field + Ord> TestChip<F> {
             }
         }
         // println!("cartesian {:?}", cartesian_product);
-        // println!("grouped data {:?}", grouped_data);
 
         grouped_data.sort_by(|a, b| match b[3].cmp(&a[3]) {
             Ordering::Equal => a[1].cmp(&b[1]),
             other => other,
         });
+        // for i in 0..grouped_data.len() {
+        //     println!("grouped data {:?}", grouped_data[i][3]);
+        // }
 
         layouter.assign_region(
             || "witness",
@@ -942,6 +912,7 @@ impl<F: Field + Ord> TestChip<F> {
 
                 // lineitem_old, divide it into two parts
                 for i in 0..31000 {
+                    // note that the second part has more than 30000 records
                     region.assign_advice(
                         || "condition2",
                         self.config.condition[2],
@@ -1018,7 +989,7 @@ impl<F: Field + Ord> TestChip<F> {
                     }
                 }
 
-                //assign join2 before the second join locally
+                // assign join2 before the second join locally
                 for i in 0..join_value[2].len() {
                     self.config.q_join[1].enable(&mut region, i)?; // join2
                     for j in 0..join_value[3].len() {
@@ -1270,7 +1241,7 @@ impl<F: Field + Ord> TestChip<F> {
                 }
 
                 for i in 0..cartesian_product.len() {
-                    if i < cartesian_product.len() - 1 {
+                    if i > 0 {
                         self.config.q_sort[2].enable(&mut region, i)?; // q_sort[2]
                     }
                     for (idx, &j) in [0, 7, 5, 1, 2].iter().enumerate() {
@@ -1285,7 +1256,7 @@ impl<F: Field + Ord> TestChip<F> {
 
                 // println!("grouped data 1 {:?}", grouped_data.len());
                 for i in 0..grouped_data.len() {
-                    if i < grouped_data.len() - 1 {
+                    if i > 0 {
                         self.config.q_sort[3].enable(&mut region, i)?; // start at the index 1
                     }
                     for j in 0..4 {
@@ -1306,16 +1277,6 @@ impl<F: Field + Ord> TestChip<F> {
                         Value::known(F::from(customer[i][0]) - F::from(condition[0])),
                     )?; // c_mktsegment = ':1'
                 }
-                // for i in 0..grouped_data.len() {
-                //     if i < grouped_data.len() - 1 {
-                //         equal_chip[1].assign(
-                //             // iszerochip assignment
-                //             &mut region,
-                //             i,
-                //             Value::known(F::from(grouped_data[i][3] - grouped_data[i + 1][3])),
-                //         )?; // revenue[i-1] = revenue [i]
-                //     }
-                // }
 
                 for i in 0..orders.len() {
                     lt_compare_chip[0].assign(
@@ -1368,24 +1329,52 @@ impl<F: Field + Ord> TestChip<F> {
                     }
                 }
 
-                // compare_chip[0].assign(
-                //     &mut region,
-                //     cartesian_left.clone(),
-                //     cartesian_right.clone(),
-                // )?;
-                // compare_chip[1].assign(
-                //     &mut region,
-                //     grouped_left_revenue.clone(),
-                //     grouped_right_revenue.clone(),
-                // )?;
-                // compare_chip[2].assign(
-                //     &mut region,
-                //     grouped_left_orderdate.clone(),
-                //     grouped_right_orderdate.clone(),
-                // )?;
+                for i in 0..cartesian_product.len() {
+                    if i > 0 {
+                        compare_chip[0].assign(
+                            &mut region,
+                            i, // assign groupby compare chip
+                            &[
+                                F::from(cartesian_product[i - 1][0]),
+                                F::from(cartesian_product[i - 1][7]),
+                                F::from(cartesian_product[i - 1][5]),
+                            ],
+                            &[
+                                F::from(cartesian_product[i][0]),
+                                F::from(cartesian_product[i][7]),
+                                F::from(cartesian_product[i][5]),
+                            ],
+                        )?;
+                    }
+                }
+                for i in 0..grouped_data.len() {
+                    if i > 0 {
+                        equal_chip[1].assign(
+                            // iszerochip assignment
+                            &mut region,
+                            i,
+                            Value::known(
+                                F::from(grouped_data[i - 1][3]) - F::from(grouped_data[i][3]),
+                            ),
+                        )?; // revenue[i-1] = revenue [i]
 
-                let duration_block = start.elapsed();
-                println!("Time elapsed for block: {:?}", duration_block);
+                        compare_chip[1].assign(
+                            // revenue[i-1] > revenue[i]
+                            &mut region,
+                            i, // assign groupby compare chip
+                            &[F::from(grouped_data[i][3])],
+                            &[F::from(grouped_data[i - 1][3])],
+                        )?;
+
+                        compare_chip[2].assign(
+                            // o_orderdate[i-1] <= o_orderdate[i]
+                            &mut region,
+                            i,
+                            &[F::from(grouped_data[i - 1][0])],
+                            &[F::from(grouped_data[i][0])],
+                        )?;
+                    }
+                }
 
                 let out = region.assign_advice(
                     || "orderby",
@@ -1618,6 +1607,7 @@ mod tests {
         // let orders_file_path = "/Users/binbingu/halo2-TPCH/src/data/orders.tbl";
         // let lineitem_file_path = "/Users/binbingu/halo2-TPCH/src/data/lineitem.tbl";
 
+        // let customer_file_path = "/home/cc/halo2-TPCH/src/data/customer.tbl";
         let customer_file_path = "/home/cc/halo2-TPCH/src/data/customer.tbl";
         let orders_file_path = "/home/cc/halo2-TPCH/src/data/orders.tbl";
         let lineitem_file_path = "/home/cc/halo2-TPCH/src/data/lineitem.tbl";
@@ -1639,8 +1629,8 @@ mod tests {
                 .iter()
                 .map(|record| {
                     vec![
-                        // date_to_timestamp(&record.o_orderdate),
-                        compact_date_representation(&record.o_orderdate, 1980),
+                        date_to_timestamp(&record.o_orderdate),
+                        // compact_date_representation(&record.o_orderdate, 1980),
                         record.o_shippriority,
                         record.o_custkey,
                         record.o_orderkey,
@@ -1658,18 +1648,18 @@ mod tests {
                         scale_by_1000(record.l_extendedprice),
                         scale_by_1000(record.l_discount),
                         // Fp::from(string_to_u64(&record.l_shipdate)),
-                        // date_to_timestamp(&record.l_shipdate),
-                        compact_date_representation(&record.l_shipdate, 1980),
+                        date_to_timestamp(&record.l_shipdate),
+                        // compact_date_representation(&record.l_shipdate, 1980),
                     ]
                 })
                 .collect();
         }
 
-        let condition = [
-            string_to_u64("HOUSEHOLD"),
-            compact_date_representation("1995-03-25", 1980),
-        ];
-        // let condition = [string_to_u64("HOUSEHOLD"), date_to_timestamp("1995-03-25")];
+        // let condition = [
+        //     string_to_u64("HOUSEHOLD"),
+        //     compact_date_representation("1995-03-25", 1980),
+        // ];
+        let condition = [string_to_u64("HOUSEHOLD"), date_to_timestamp("1995-03-25")];
 
         // c_mktsegment = 'HOUSEHOLD'   -> 3367
         // o_orderdate < date '1995-03-25'and l_shipdate > date '1995-03-25'  ->796089600
@@ -1696,7 +1686,7 @@ mod tests {
             let prover = MockProver::run(k, &circuit, vec![public_input]).unwrap();
             prover.assert_satisfied();
         } else {
-            let proof_path = "/home/cc/halo2-TPCH/src/sql/proof_q3_v1";
+            let proof_path = "/home/cc/halo2-TPCH/src/sql/proof_q3_120K";
             generate_and_verify_proof(k, circuit, &public_input, proof_path);
         }
 

@@ -1003,7 +1003,7 @@ mod tests {
         // Time to generate parameters
         // let params_time_start = Instant::now();
         // let params: ParamsIPA<vesta::Affine> = ParamsIPA::new(k);
-        let params_path = "/home/cc/halo2-TPCH/src/sql/param16";
+        let params_path = "/home/cc/halo2-TPCH/src/sql/param18";
         // let mut fd = std::fs::File::create(&proof_path).unwrap();
         // params.write(&mut fd).unwrap();
         // println!("Time to generate params {:?}", params_time);
@@ -1094,7 +1094,7 @@ mod tests {
 
         let customer_file_path = "/home/cc/halo2-TPCH/src/data/customer.tbl";
         let orders_file_path = "/home/cc/halo2-TPCH/src/data/orders.tbl";
-        let lineitem_file_path = "/home/cc/halo2-TPCH/src/data/lineitem.tbl";
+        let lineitem_file_path = "/home/cc/halo2-TPCH/src/data/lineitem_240K.tbl";
 
         let mut customer: Vec<Vec<u64>> = Vec::new();
         let mut orders: Vec<Vec<u64>> = Vec::new();
@@ -1151,7 +1151,7 @@ mod tests {
             let prover = MockProver::run(k, &circuit, vec![public_input]).unwrap();
             prover.assert_satisfied();
         } else {
-            let proof_path = "/home/cc/halo2-TPCH/src/sql/proof_q18";
+            let proof_path = "/home/cc/halo2-TPCH/src/sql/proof_q18_240K";
             generate_and_verify_proof(k, circuit, &public_input, proof_path);
         }
 
