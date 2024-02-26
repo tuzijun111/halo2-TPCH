@@ -1686,7 +1686,7 @@ mod tests {
             let prover = MockProver::run(k, &circuit, vec![public_input]).unwrap();
             prover.assert_satisfied();
         } else {
-            let proof_path = "/home/cc/halo2-TPCH/src/sql/proof_q3_120K";
+            let proof_path = "/home/cc/halo2-TPCH/src/sql/proof_q3";
             generate_and_verify_proof(k, circuit, &public_input, proof_path);
         }
 
