@@ -13,6 +13,9 @@ cargo test --package halo2-experiments --lib -- sql::q9_final_v2::tests::test_1 
 
 cargo test --package halo2-experiments --lib -- sql::q18_final_v2::tests::test_1 --exact --nocapture
 
-For different datasets, please choose the correct public parameters.
 
 
+Notes:
+Please enable sufficient RUST_MIN_STACK by running, e.g., "export RUST_MIN_STACK=33554432"
+
+For different datasets, please choose the correct public parameters. For 60k, 120k, 240k Rows, k = 16, 17, 18 respectively except for Q3. 
