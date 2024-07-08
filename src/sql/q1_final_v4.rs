@@ -14,6 +14,8 @@ use std::time::Instant;
 
 const NUM_BYTES: usize = 5;
 
+
+
 // #[derive(Default)]
 // We should use the selector to skip the row which does not satisfy shipdate values
 pub trait Field: PrimeField<Repr = [u8; 32]> {}
