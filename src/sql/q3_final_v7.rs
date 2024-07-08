@@ -23,6 +23,7 @@ use std::mem;
 use std::process;
 use std::time::Instant;
 
+
 const NUM_BYTES: usize = 5;
 
 pub trait Field: PrimeField<Repr = [u8; 32]> {}
