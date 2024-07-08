@@ -20,6 +20,7 @@ use std::collections::HashSet;
 
 use std::mem;
 
+
 const NUM_BYTES: usize = 5;
 
 pub trait Field: PrimeField<Repr = [u8; 32]> {}
